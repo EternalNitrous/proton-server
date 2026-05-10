@@ -1,7 +1,6 @@
 #pragma once
 // ============================================================
 //  robot_params.h — hexapod physical parameters
-//  Direct port of config/get_robot_params.m
 // ============================================================
 #include "config.h"
 #include "types.h"
@@ -14,7 +13,7 @@ struct RobotDims {
     double tibia_len    = config::TibiaLength;
 };
 
-// ---- Body geometry (for visualiser) ----------------------------
+// ---- Body geometry ---------------------------------------------
 struct BodyShape {
     double length  = config::BodyLength;
     double width   = config::BodyWidth;
@@ -31,7 +30,7 @@ struct RobotParams {
     double l_horiz = 0.0;                  // neutral horizontal reach from coxa pivot
 };
 
-// ---- Factory function (mirrors get_robot_params.m) -------------
+// ---- Factory function ------------------------------------------
 //
 //  LEG LAYOUT (angles from +X / forward axis):
 //   Leg  Name  Angle

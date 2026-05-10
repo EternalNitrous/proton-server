@@ -1,16 +1,16 @@
-# Hexapod Kinematic Simulator — C++ Port
+# Hexapod Kinematic Simulator
 
-Full C++ reconstruction of the MATLAB hexapod kinematics simulation.
-Every module is a faithful, one-to-one port of the original `.m` files.
+Headless hexapod simulation and control runtime with Wi-Fi control,
+Servo2040 serial output, gait generation, IK/FK, and telemetry endpoints.
 
 ## What's included
 
-| C++ file | Ported from |
+| C++ file | Purpose |
 |---|---|
 | `src/config.h` | User-tunable robot, gait, servo, and hardware settings |
-| `src/robot_params.h` | `config/get_robot_params.m` |
-| `src/kinematics.h` | `firmware/hexapod_ik_solver.m`, `visualizer/compute_leg_fk.m` |
-| `src/gaits.h` | `firmware/hexapod_gait_engine.m` |
+| `src/robot_params.h` | Robot geometry and default stance parameters |
+| `src/kinematics.h` | IK solver and FK helpers |
+| `src/gaits.h` | Gait phase tables and foot trajectory engine |
 | `src/control.cpp` | Per-frame control updates, gait switching, direct PWM mode |
 | `src/input_headless.cpp` | Headless no-local-input stub for Wi-Fi / Servo2040 operation |
 | `src/servo.cpp` | Servo angle/PWM conversion and Servo2040 serial output |
@@ -207,10 +207,12 @@ Servo2040 pin order, and hardware direction flips all live there.
 
 ## Architecture
 
-All kinematics match the MATLAB source precisely:
+The core runtime is split into a few focused pieces:
 
 - **IK**: World → body frame (ZYX Euler), body → leg-local frame, 2-link sagittal plane solver
 - **FK**: Standard 4×4 homogeneous transform chain (Rz–Ry–Rx, column-major)
 - **Gaits**: Table-driven phase windows, phase-locked mode switching, strain-triggered realignment, stride safety, Raibert foot placement, workspace clamping, and body sway
 
 FK error should be <= 0.1 mm under normal operation.
+
+This repo was heavily based on waw's MATLAB simulation, which was based on Make Your Pet's Chica Server app.
