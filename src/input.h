@@ -3,7 +3,7 @@
 #include "config.h"
 #include "wifi_controller.h"
 
-#include "raylib_compat.h"
+#include "raylib.h"
 
 #include <array>
 

@@ -12,9 +12,8 @@ Every module is a faithful, one-to-one port of the original `.m` files.
 | `src/kinematics.h` | `firmware/hexapod_ik_solver.m`, `visualizer/compute_leg_fk.m` |
 | `src/gaits.h` | `firmware/hexapod_gait_engine.m` |
 | `src/control.cpp` | Per-frame control updates, gait switching, direct PWM mode |
-| `src/input.cpp` | Optional GUI gamepad / joystick / keyboard input plumbing |
-| `src/input_headless.cpp` | Headless no-local-input stub for Wi-Fi / Servo2040 operation |
-| `src/visual.cpp` | Optional GUI 3-D drawing, footprints, HUD panels, controls legend |
+| `src/input.cpp` | Gamepad / joystick / keyboard input plumbing |
+| `src/visual.cpp` | 3-D drawing, footprints, HUD panels, controls legend |
 | `src/servo.cpp` | Servo angle/PWM conversion and Servo2040 serial output |
 | `src/wifi_controller.cpp` | Built-in Wi-Fi controller HTTP server |
 | `src/options.cpp` | Command-line option parsing |
@@ -22,12 +21,9 @@ Every module is a faithful, one-to-one port of the original `.m` files.
 
 ## Controls
 
-The default build is headless: it runs the same simulation, Wi-Fi controller,
-Servo2040 output, gait, IK, and visualizer websocket updates without opening a
-raylib window. In GUI builds, keyboard, controller, and Wi-Fi input switch
-actively while the simulator is running. The active source follows whichever
-method you are currently using; when a new source starts sending control input,
-it takes over immediately.
+Keyboard, controller, and Wi-Fi input switch actively while the simulator is
+running. The active source follows whichever method you are currently using;
+when a new source starts sending control input, it takes over immediately.
 
 ### Wi-Fi controller
 
@@ -127,38 +123,27 @@ To use a different port:
 | Escape | Quit |
 
 Keys are fully combinable — W+A walks diagonally, W+E arcs like a car-turn, etc.
-Keyboard, mouse, and gamepad controls require a GUI build.
 
 ## Build requirements
 
 - CMake ≥ 3.16
 - C++17 compiler (GCC, Clang, MSVC)
-- Git and an internet connection only when building the optional GUI, because
-  FetchContent downloads raylib
+- Git (for FetchContent to download raylib)
+- Internet connection on first build
 
-Headless builds do not fetch raylib. GUI builds fetch and build raylib
-automatically — no manual install required.
+raylib is fetched and built automatically — no manual install required.
 
 ## Build instructions
 
 ### Linux / macOS
 
 ```bash
-# Prerequisites: cmake and a C++ compiler
+# Prerequisites: cmake, a C++ compiler, git
+# Ubuntu/Debian also needs: libx11-dev libxrandr-dev libxinerama-dev
+#                           libxcursor-dev libxi-dev libgl1-mesa-dev
 
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j$(nproc)
-./hexapod_sim
-```
-
-To build the optional GUI renderer and local keyboard/gamepad input path:
-
-```bash
-# Ubuntu/Debian GUI builds also need: libx11-dev libxrandr-dev libxinerama-dev
-#                                    libxcursor-dev libxi-dev libgl1-mesa-dev
-
-cmake .. -DCMAKE_BUILD_TYPE=Release -DHEXAPOD_ENABLE_GUI=ON
 cmake --build . -j$(nproc)
 ./hexapod_sim
 ```
@@ -194,8 +179,8 @@ cmake --build . -j$(sysctl -n hw.ncpu)
 
 ## Servo2040 output
 
-To stream generated PWM values to a Servo2040 board, pass the serial port when
-launching the executable:
+To stream the PWM values shown in the left HUD to a Servo2040 board, pass the
+serial port when launching the executable:
 
 ```bash
 ./build/hexapod_sim --servo2040 /dev/cu.usbmodemXXXX
@@ -215,13 +200,13 @@ exits. The `--servo2040-port PORT` flag is also accepted.
 While connected, the simulator reads Servo2040 current pin 24 and voltage pin
 25 every 0.5 seconds. Voltage shutdown is armed only after the relay has been
 on for 3 seconds; low voltage while the relay is off is ignored. Once armed,
-below 7.0 V the GUI background pulses yellow every 5 seconds. Two consecutive
-readings below 6.0 V turn the GUI background red, request the walking shutdown
+below 7.0 V the background pulses yellow every 5 seconds. Two consecutive
+readings below 6.0 V turn the background red, request the walking shutdown
 sequence, and turn the relay off when shutdown completes.
 
-For hardware-free debugging in a GUI build, run with `--servo2040-pwm-sim` or
-`--pwm-sim`. This renders the simulated robot from the same Servo2040 PWM
-packet that would be sent over serial, including the pin mapping.
+For hardware-free debugging, run with `--servo2040-pwm-sim` or `--pwm-sim`.
+This renders the simulated robot from the same Servo2040 PWM packet that would
+be sent over serial, including the pin mapping.
 Direction flips for the physical hexapod are applied only to the serial output.
 
 To skip gait and IK entirely and directly pose the simulated robot with PWM

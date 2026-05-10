@@ -7,19 +7,11 @@ void print_usage(const char* exe)
     std::printf("Usage: %s [--servo2040 PORT] [--pwm-control] [--port PORT]\n", exe);
     std::printf("\n");
     std::printf("Options:\n");
-#ifdef HEXAPOD_HEADLESS
-    std::printf("  --servo2040 PORT        Stream generated PWM values to a Servo2040 serial port.\n");
-#else
     std::printf("  --servo2040 PORT        Stream HUD PWM values to a Servo2040 serial port.\n");
-#endif
     std::printf("  --servo2040-port PORT   Same as --servo2040.\n");
     std::printf("  --pwm-control-servo2040 PORT\n");
     std::printf("                          Directly edit PWM values and stream them to Servo2040.\n");
-#ifdef HEXAPOD_HEADLESS
-    std::printf("  --servo2040-pwm-sim     Mirror Servo2040 PWM packets into the visualizer state.\n");
-#else
     std::printf("  --servo2040-pwm-sim     Render the simulated robot from the Servo2040 PWM packet.\n");
-#endif
     std::printf("  --pwm-sim               Same as --servo2040-pwm-sim.\n");
     std::printf("  --pwm-control           Skip gait/IK and directly edit simulated PWM values.\n");
     std::printf("  --port PORT             Serve the Wi-Fi controller page on this port (default 8080).\n");

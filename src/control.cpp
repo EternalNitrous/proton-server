@@ -4,7 +4,7 @@
 #include "gaits.h"
 #include "kinematics.h"
 
-#include "raylib_compat.h"
+#include "raylib.h"
 
 #include <algorithm>
 #include <cmath>

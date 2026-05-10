@@ -1,7 +1,0 @@
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/hexapod_sim.dir
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/edit_cache.dir
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/rebuild_cache.dir
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/list_install_components.dir
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/install.dir
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/install/local.dir
-/Users/nitrous/hexapod_sim/build-headless/CMakeFiles/install/strip.dir

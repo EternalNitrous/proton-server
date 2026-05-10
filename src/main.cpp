@@ -4,7 +4,7 @@
 //  The simulator loop lives here; input, rendering, Servo2040,
 //  options, and user-tunable configuration are split into modules.
 // ============================================================
-#include "raylib_compat.h"
+#include "raylib.h"
 
 #include "config.h"
 #include "control.h"
@@ -13,31 +13,17 @@
 #include "options.h"
 #include "robot_params.h"
 #include "servo.h"
-#ifndef HEXAPOD_HEADLESS
 #include "visual.h"
-#endif
 #include "wifi_controller.h"
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
-#include <csignal>
-#include <thread>
 
 namespace {
 
 constexpr double WifiRelayInactivityTimeout = 15.0;
-
-#ifdef HEXAPOD_HEADLESS
-volatile std::sig_atomic_t headless_shutdown_signal = 0;
-
-void handle_headless_shutdown_signal(int)
-{
-    headless_shutdown_signal = 1;
-}
-#endif
 
 int wifi_position_from_control(const RobotControlState& control)
 {
@@ -74,12 +60,6 @@ int main(int argc, char** argv)
         return options.parse_error ? 1 : 0;
     }
 
-#ifdef HEXAPOD_HEADLESS
-    std::signal(SIGINT, handle_headless_shutdown_signal);
-    std::signal(SIGTERM, handle_headless_shutdown_signal);
-    std::printf("Headless mode: local raylib rendering and input disabled.\n");
-#endif
-
     WifiControllerServer wifi_controller;
     if (wifi_controller.start(options.wifi_controller_port)) {
         std::printf("Wi-Fi controller: http://0.0.0.0:%d/\n", options.wifi_controller_port);
@@ -87,7 +67,6 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "Wi-Fi controller: %s\n", wifi_controller.status().c_str());
     }
 
-#ifndef HEXAPOD_HEADLESS
     // ---- Window setup ------------------------------------------
     const int SCR_W = config::ScreenWidth, SCR_H = config::ScreenHeight;
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
@@ -104,7 +83,6 @@ int main(int argc, char** argv)
     camera.up         = {0.0f, 1.0f, 0.0f};  // Y-up in raylib coords
     camera.fovy       = config::CameraFovy;
     camera.projection = CAMERA_PERSPECTIVE;
-#endif
 
     // ---- Robot initialisation ----------------------------------
     RobotParams params = get_robot_params();
@@ -176,33 +154,12 @@ int main(int argc, char** argv)
         }
     };
 
-#ifdef HEXAPOD_HEADLESS
-    using HeadlessClock = std::chrono::steady_clock;
-    constexpr double TargetFrameSeconds = 1.0 / 60.0;
-    const auto target_frame_duration =
-        std::chrono::duration_cast<HeadlessClock::duration>(
-            std::chrono::duration<double>(TargetFrameSeconds));
-    auto last_frame_time = HeadlessClock::now() - target_frame_duration;
-#endif
-
     while (!shutdown_complete) {
-#ifdef HEXAPOD_HEADLESS
-        if (headless_shutdown_signal != 0) {
-            shutdown_requested = true;
-        }
-
-        const auto frame_start_time = HeadlessClock::now();
-        double dt = std::min(
-            std::chrono::duration<double>(frame_start_time - last_frame_time).count(),
-            0.05);
-        last_frame_time = frame_start_time;
-#else
         if (WindowShouldClose()) {
             shutdown_requested = true;
         }
 
         double dt = std::min((double)GetFrameTime(), 0.05);  // cap at 50 ms
-#endif
         if (options.servo2040_enabled && servo2040.is_connected() && !voltage_critical) {
             if (servo2040.relay_enabled()) {
                 relay_active_time += dt;
@@ -250,14 +207,9 @@ int main(int argc, char** argv)
         InputState input = read_input_state();
         apply_wifi_controller_snapshot(input, wifi_controller.snapshot());
         control_input = update_control_input_source(input, control_input);
-#ifdef HEXAPOD_HEADLESS
-        bool keyboard_enabled = false;
-#else
         bool keyboard_enabled = control_input.active_source == ControlInputSource::KEYBOARD;
-#endif
         bool wifi_enabled = control_input.active_source == ControlInputSource::WIFI;
 
-#ifndef HEXAPOD_HEADLESS
         // ---- Mouse camera orbit --------------------------------
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
             Vector2 d = GetMouseDelta();
@@ -269,7 +221,6 @@ int main(int argc, char** argv)
         }
         cam_distance -= GetMouseWheelMove() * 0.06f;
         cam_distance  = std::clamp(cam_distance, config::CameraMinDistance, config::CameraMaxDistance);
-#endif
 
         bool shift  = keyboard_enabled
                    ? (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
@@ -344,7 +295,6 @@ int main(int argc, char** argv)
                                                 gait_state.is_swing, frame.render_state,
                                                 frame.render_pwm);
 
-#ifndef HEXAPOD_HEADLESS
         // ---- Record foot-plant events for trail -----------------
         if (!options.direct_pwm_control_enabled) {
             record_footprints(feet_world, gait_state.is_swing, (float)dt);
@@ -399,21 +349,9 @@ int main(int argc, char** argv)
         });
 
         EndDrawing();
-#else
-        (void)max_err;
-        (void)max_drag;
-        (void)voltage_valid;
-        (void)current_valid;
-        (void)servo_voltage;
-        (void)servo_current;
-        (void)voltage_warning;
-        std::this_thread::sleep_until(frame_start_time + target_frame_duration);
-#endif
     }
 
-#ifndef HEXAPOD_HEADLESS
     CloseWindow();
-#endif
     wifi_controller.stop();
     return 0;
 }

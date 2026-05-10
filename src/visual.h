@@ -7,7 +7,7 @@
 #include "servo.h"
 #include "types.h"
 
-#include "raylib_compat.h"
+#include "raylib.h"
 
 #include <array>
 
