@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
-project(HexapodSim CXX)
+project(ProtonServer CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ============================================================
 #  Executable
 # ============================================================
-add_executable(hexapod_sim
+add_executable(proton-server
     src/control.cpp
     src/input_headless.cpp
     src/main.cpp
@@ -16,7 +16,7 @@ add_executable(hexapod_sim
     src/wifi_controller.cpp
 )
 
-target_include_directories(hexapod_sim PRIVATE
+target_include_directories(proton-server PRIVATE
     src/
 )
 
@@ -25,11 +25,11 @@ target_include_directories(hexapod_sim PRIVATE
 # ============================================================
 
 if(WIN32)
-    target_link_libraries(hexapod_sim PRIVATE ws2_32 iphlpapi)
+    target_link_libraries(proton-server PRIVATE ws2_32 iphlpapi)
 endif()
 
 if(UNIX AND NOT APPLE)
-    target_link_libraries(hexapod_sim PRIVATE
+    target_link_libraries(proton-server PRIVATE
         dl pthread m
     )
 endif()
@@ -38,12 +38,12 @@ endif()
 #  Compiler flags — optimisation for simulation speed
 # ============================================================
 if(MSVC)
-    target_compile_options(hexapod_sim PRIVATE /O2 /W3)
+    target_compile_options(proton-server PRIVATE /O2 /W3)
 else()
-    target_compile_options(hexapod_sim PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
+    target_compile_options(proton-server PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
 endif()
 
 # ============================================================
 #  Install
 # ============================================================
-install(TARGETS hexapod_sim DESTINATION bin)
+install(TARGETS proton-server DESTINATION bin)
