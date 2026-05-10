@@ -1,0 +1,212 @@
+*PPD-Adobe: "4.3"
+*% PPD created by ipp2ppd (v4:Dec 20 2025)
+*FormatVersion: "4.3"
+*FileVersion: "4.0"
+*LanguageVersion: English
+*LanguageEncoding: ISOLatin1
+*PSVersion: "(3010.000) 0"
+*LanguageLevel: "3"
+*FileSystem: False
+*cupsVersion: 2.0
+*cupsModelNumber: 0
+*cupsSNMPSupplies: False
+*APAirPrint: True
+*APAirPrintVersion: 1.4
+*APURFVersion: 1.4
+*APPrinterFWVersion: "20220414:20220414"
+*% WARNING no printer-strings for the language "en"
+*cupsLanguages: "en"
+*cupsIdentifyActions: "display"
+*APPrinterIconPath: "/Library/Printers/Icons/8BD6A3B3-AEC1-4053-B472-89CF856B59BB.icns"
+*APAcceptsMixedURF: True
+*PCFileName: "APHPLASE.PPD"
+*PrinterUUID: "50484248-4a37-3939-3536-80ce625bb0e3"
+*ModelName: "HP LaserJet M402n"
+*Product: (HP LaserJet M402n)
+*ShortNickName: "HP LaserJet M402n"
+*Manufacturer: "HP"
+*NickName: "HP LaserJet M402n-AirPrint"
+*Throughput: 40
+*cupsSingleFile: True
+*cupsFilter2: "image/urf image/urf 10 -"
+*cupsFilter: "image/urf 10 -"
+*cupsFilter2: "application/vnd.cups-pdf application/pdf 0 maxsize(76800000) -"
+*cupsFilter: "application/vnd.cups-pdf 0 -"
+*cupsFilter2: "image/jpeg image/jpeg 0 maxsize(12000256) -"
+*cupsFilter: "image/jpeg 0 -"
+*cupsMaxCopies: 999
+*OpenUI *Collate: PickOne
+*OrderDependency: 10 AnySetup *Collate
+*DefaultCollate: False
+*Collate True: "<</Collate true>>setpagedevice"
+*Collate False: "<</Collate false>>setpagedevice"
+*CloseUI: *Collate
+*ColorDevice: False
+*APColorSpaces: true
+*DefaultColorSpace: Gray
+*cupsICCProfile Gray../Grayscale: "/System/Library/ColorSync/Profiles/Generic Gray Gamma 2.2 Profile.icc"
+*OpenUI *ColorModel/Color Mode: PickOne
+*OrderDependency: 10 AnySetup *ColorModel
+*DefaultColorModel: Gray
+*ColorModel Gray/Grayscale: "<</cupsColorSpace 18/cupsBitsPerColor 8/cupsColorOrder 0/cupsCompression 0>>setpagedevice"
+*CloseUI: *ColorModel
+*LandscapeOrientation: Minus90
+*DefaultResolution: 600x600dpi
+*OpenUI *cupsPrintQuality/Quality: PickOne
+*OrderDependency: 10 AnySetup *cupsPrintQuality
+*DefaultcupsPrintQuality: Normal
+*cupsPrintQuality Normal: "<</cupsInteger1 4 /HWResolution[600 600]>>setpagedevice"
+*CloseUI: *cupsPrintQuality
+*cupsBackSide: Normal
+*DefaultOutputOrder: Normal
+*APHasMediaReady: True
+*OpenUI *PageSize/Media Size: PickOne
+*OrderDependency: 10 AnySetup *PageSize
+*DefaultPageSize: Letter
+*PageSize 100x150mm: "<</PageSize[283.4646 425.1969]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize 184x260mm: "<</PageSize[521.5748 737.0079]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize 195x270mm: "<</PageSize[552.7559 765.3543]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize 4x6: "<</PageSize[288.0000 432.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize 5x8: "<</PageSize[360.0000 576.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize A4: "<</PageSize[595.2756 841.8898]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize A5: "<</PageSize[419.5276 595.2756]/ImagingBBox null/Orientation 3>>setpagedevice"
+*PageSize A6: "<</PageSize[297.6378 419.5276]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize B5: "<</PageSize[515.9055 728.5039]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize B6: "<</PageSize[362.8346 515.9055]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize DoublePostcardRotated: "<</PageSize[419.5276 566.9291]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Env10: "<</PageSize[296.9858 684.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize EnvC5: "<</PageSize[459.2126 649.1339]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize EnvDL: "<</PageSize[311.8110 623.6220]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize EnvMonarch: "<</PageSize[278.9858 540.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Executive: "<</PageSize[522.0000 756.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize FanFoldGermanLegal: "<</PageSize[612.0000 936.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize ISOB5: "<</PageSize[498.8976 708.6614]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Legal: "<</PageSize[612.0000 1008.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Letter: "<</PageSize[612.0000 792.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Oficio: "<</PageSize[612.0000 964.8000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Postcard: "<</PageSize[283.4646 419.5276]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize Statement: "<</PageSize[396.0000 612.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageSize roc16k: "<</PageSize[558.0000 774.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*CloseUI: *PageSize
+*OpenUI *PageRegion/Media Size: PickOne
+*OrderDependency: 10 AnySetup *PageRegion
+*DefaultPageRegion: Letter
+*PageRegion 100x150mm: "<</PageSize[283.4646 425.1969]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion 184x260mm: "<</PageSize[521.5748 737.0079]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion 195x270mm: "<</PageSize[552.7559 765.3543]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion 4x6: "<</PageSize[288.0000 432.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion 5x8: "<</PageSize[360.0000 576.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion A4: "<</PageSize[595.2756 841.8898]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion A5: "<</PageSize[419.5276 595.2756]/ImagingBBox null/Orientation 3>>setpagedevice"
+*PageRegion A6: "<</PageSize[297.6378 419.5276]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion B5: "<</PageSize[515.9055 728.5039]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion B6: "<</PageSize[362.8346 515.9055]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion DoublePostcardRotated: "<</PageSize[419.5276 566.9291]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Env10: "<</PageSize[296.9858 684.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion EnvC5: "<</PageSize[459.2126 649.1339]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion EnvDL: "<</PageSize[311.8110 623.6220]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion EnvMonarch: "<</PageSize[278.9858 540.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Executive: "<</PageSize[522.0000 756.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion FanFoldGermanLegal: "<</PageSize[612.0000 936.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion ISOB5: "<</PageSize[498.8976 708.6614]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Legal: "<</PageSize[612.0000 1008.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Letter: "<</PageSize[612.0000 792.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Oficio: "<</PageSize[612.0000 964.8000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Postcard: "<</PageSize[283.4646 419.5276]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion Statement: "<</PageSize[396.0000 612.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*PageRegion roc16k: "<</PageSize[558.0000 774.0000]/ImagingBBox null/Orientation 0>>setpagedevice"
+*CloseUI: *PageRegion
+*DefaultImageableArea: Letter
+*DefaultPaperDimension: Letter
+*PaperDimension 100x150mm: "283.4646 425.1969"
+*ImageableArea 100x150mm: "11.9906 11.9906 271.4740 413.2063"
+*PaperDimension 184x260mm: "521.5748 737.0079"
+*ImageableArea 184x260mm: "11.9906 11.9906 509.5843 725.0173"
+*PaperDimension 195x270mm: "552.7559 765.3543"
+*ImageableArea 195x270mm: "11.9906 11.9906 540.7654 753.3638"
+*PaperDimension 4x6: "288.0000 432.0000"
+*ImageableArea 4x6: "11.9906 11.9906 276.0094 420.0094"
+*PaperDimension 5x8: "360.0000 576.0000"
+*ImageableArea 5x8: "11.9906 11.9906 348.0094 564.0094"
+*PaperDimension A4: "595.2756 841.8898"
+*ImageableArea A4: "11.9906 11.9906 583.2850 829.8992"
+*PaperDimension A5: "419.5276 595.2756"
+*ImageableArea A5: "11.9906 11.9906 407.5370 583.2850"
+*PaperDimension A6: "297.6378 419.5276"
+*ImageableArea A6: "11.9906 11.9906 285.6472 407.5370"
+*PaperDimension B5: "515.9055 728.5039"
+*ImageableArea B5: "11.9906 11.9906 503.9150 716.5134"
+*PaperDimension B6: "362.8346 515.9055"
+*ImageableArea B6: "11.9906 11.9906 350.8441 503.9150"
+*PaperDimension DoublePostcardRotated: "419.5276 566.9291"
+*ImageableArea DoublePostcardRotated: "11.9906 11.9906 407.5370 554.9386"
+*PaperDimension Env10: "296.9858 684.0000"
+*ImageableArea Env10: "11.9906 11.9906 284.9953 672.0094"
+*PaperDimension EnvC5: "459.2126 649.1339"
+*ImageableArea EnvC5: "11.9906 11.9906 447.2220 637.1433"
+*PaperDimension EnvDL: "311.8110 623.6220"
+*ImageableArea EnvDL: "11.9906 11.9906 299.8205 611.6315"
+*PaperDimension EnvMonarch: "278.9858 540.0000"
+*ImageableArea EnvMonarch: "11.9906 11.9906 266.9953 528.0094"
+*PaperDimension Executive: "522.0000 756.0000"
+*ImageableArea Executive: "11.9906 11.9906 510.0094 744.0094"
+*PaperDimension FanFoldGermanLegal: "612.0000 936.0000"
+*ImageableArea FanFoldGermanLegal: "11.9906 11.9906 600.0094 924.0094"
+*PaperDimension ISOB5: "498.8976 708.6614"
+*ImageableArea ISOB5: "11.9906 11.9906 486.9071 696.6709"
+*PaperDimension Legal: "612.0000 1008.0000"
+*ImageableArea Legal: "11.9906 11.9906 600.0094 996.0094"
+*PaperDimension Letter: "612.0000 792.0000"
+*ImageableArea Letter: "11.9906 11.9906 600.0094 780.0094"
+*PaperDimension Oficio: "612.0000 964.8000"
+*ImageableArea Oficio: "11.9906 11.9906 600.0094 952.8094"
+*PaperDimension Postcard: "283.4646 419.5276"
+*ImageableArea Postcard: "11.9906 11.9906 271.4740 407.5370"
+*PaperDimension Statement: "396.0000 612.0000"
+*ImageableArea Statement: "11.9906 11.9906 384.0094 600.0094"
+*PaperDimension roc16k: "558.0000 774.0000"
+*ImageableArea roc16k: "11.9906 11.9906 546.0094 762.0094"
+*ParamCustomPageSize Width: 1 points 216 612
+*ParamCustomPageSize Height: 2 points 360 1008
+*ParamCustomPageSize WidthOffset: 3 points 0 0
+*ParamCustomPageSize HeightOffset: 4 points 0 0
+*ParamCustomPageSize Orientation: 5 int 0 3
+*CustomPageSize True: ""
+*OpenUI *MediaType/MediaType: PickOne
+*OrderDependency: 10 AnySetup *MediaType
+*MediaType stationery: ""
+*MediaType stationery-lightweight: ""
+*% WARNING Suppressing extraLight, there is no default translation.
+*% WARNING Suppressing intermediate, there is no default translation.
+*% WARNING Suppressing midweight, there is no default translation.
+*MediaType stationery-heavyweight: ""
+*% WARNING Suppressing extraHeavy, there is no default translation.
+*MediaType transparency: ""
+*MediaType labels: ""
+*MediaType stationery-letterhead: ""
+*MediaType envelope: ""
+*MediaType stationery-preprinted: ""
+*MediaType stationery-prepunched: ""
+*MediaType stationery-colored: ""
+*MediaType stationery-bond: ""
+*MediaType recycled: ""
+*% WARNING Suppressing rough, there is no default translation.
+*MediaType any/Any: ""
+*DefaultMediaType: any
+*CloseUI: *MediaType
+*OpenUI *InputSlot: PickOne
+*OrderDependency: 10 AnySetup *InputSlot
+*InputSlot auto: ""
+*InputSlot manual: ""
+*InputSlot tray-1: ""
+*InputSlot tray-2: ""
+*DefaultInputSlot: Unknown
+*CloseUI: *InputSlot
+*APPrinterPreset Gray_with_Paper_Auto-Detect/Black and White: "
+	*cupsPrintQuality Normal
+	*ColorModel Gray
+	com.apple.print.preset.graphicsType General
+	com.apple.print.preset.quality mid
+	com.apple.print.preset.media-front-coating autodetect
+	com.apple.print.preset.output-mode monochrome"
+*End

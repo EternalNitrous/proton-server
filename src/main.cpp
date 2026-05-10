@@ -1,0 +1,419 @@
+// ============================================================
+//  main.cpp — Hexapod Kinematic Simulator
+//
+//  The simulator loop lives here; input, rendering, Servo2040,
+//  options, and user-tunable configuration are split into modules.
+// ============================================================
+#include "raylib_compat.h"
+
+#include "config.h"
+#include "control.h"
+#include "input.h"
+#include "kinematics.h"
+#include "options.h"
+#include "robot_params.h"
+#include "servo.h"
+#ifndef HEXAPOD_HEADLESS
+#include "visual.h"
+#endif
+#include "wifi_controller.h"
+
+#include <algorithm>
+#include <array>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <csignal>
+#include <thread>
+
+namespace {
+
+constexpr double WifiRelayInactivityTimeout = 15.0;
+
+#ifdef HEXAPOD_HEADLESS
+volatile std::sig_atomic_t headless_shutdown_signal = 0;
+
+void handle_headless_shutdown_signal(int)
+{
+    headless_shutdown_signal = 1;
+}
+#endif
+
+int wifi_position_from_control(const RobotControlState& control)
+{
+    if (control.shutdown_complete) return 0;
+    if (control.startup_phase != StartupPhase::DONE) return 0;
+    return 1;
+}
+
+int wifi_gait_id(GaitType gait)
+{
+    switch (gait) {
+        case GaitType::TRIPOD: return 1;
+        case GaitType::RIPPLE_EXT: return 2;
+        case GaitType::RIPPLE: return 3;
+        case GaitType::AMBLE: return 4;
+    }
+    return 1;
+}
+
+double wifi_speed_from_control(const RobotControlState& control)
+{
+    return std::clamp(control.current_walk_speed,
+                      config::Motion.linear_speed_min,
+                      config::Motion.linear_speed_max);
+}
+
+} // namespace
+
+int main(int argc, char** argv)
+{
+    AppOptions options = parse_options(argc, argv);
+    if (options.show_help) {
+        print_usage(argv[0]);
+        return options.parse_error ? 1 : 0;
+    }
+
+#ifdef HEXAPOD_HEADLESS
+    std::signal(SIGINT, handle_headless_shutdown_signal);
+    std::signal(SIGTERM, handle_headless_shutdown_signal);
+    std::printf("Headless mode: local raylib rendering and input disabled.\n");
+#endif
+
+    WifiControllerServer wifi_controller;
+    if (wifi_controller.start(options.wifi_controller_port)) {
+        std::printf("Wi-Fi controller: http://0.0.0.0:%d/\n", options.wifi_controller_port);
+    } else {
+        std::fprintf(stderr, "Wi-Fi controller: %s\n", wifi_controller.status().c_str());
+    }
+
+#ifndef HEXAPOD_HEADLESS
+    // ---- Window setup ------------------------------------------
+    const int SCR_W = config::ScreenWidth, SCR_H = config::ScreenHeight;
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
+    InitWindow(SCR_W, SCR_H,
+        "Hexapod Kinematic Simulator  |  Active input switching");
+    SetTargetFPS(60);
+
+    // ---- Camera (mirrors MATLAB view(ax,3): azimuth=-37.5, elev=30) --
+    constexpr float D2R = 3.14159265358979323846f / 180.0f;
+    float cam_azimuth   = config::CameraAzimuthDeg * D2R;
+    float cam_elevation = config::CameraElevationDeg * D2R;
+    float cam_distance  = config::CameraDistance;
+    Camera3D camera = {};
+    camera.up         = {0.0f, 1.0f, 0.0f};  // Y-up in raylib coords
+    camera.fovy       = config::CameraFovy;
+    camera.projection = CAMERA_PERSPECTIVE;
+#endif
+
+    // ---- Robot initialisation ----------------------------------
+    RobotParams params = get_robot_params();
+
+    Servo2040Client servo2040;
+    if (options.servo2040_enabled) {
+        bool ok = servo2040.open(options.servo2040_port);
+        if (!ok) {
+            std::fprintf(stderr, "Servo2040: failed to open %s (%s)\n",
+                         options.servo2040_port.c_str(), servo2040.status().c_str());
+            wifi_controller.update_relay_status(false);
+        } else {
+            std::array<int, 18> neutral_pwm_by_pin = {};
+            neutral_pwm_by_pin.fill(config::PwmNeutral);
+            servo2040.send_pwm_values(neutral_pwm_by_pin);
+            wifi_controller.update_relay_status(servo2040.relay_enabled());
+        }
+    }
+
+    // ---- Gait state --------------------------------------------
+    RobotControlState control = make_robot_control_state();
+    GaitState gait_state;          // zero-init; gaits self-initialize
+    BasePose base_pose, final_pose;
+    RobotState robot_state;
+    Vec3 feet_world[6];
+
+    // Pre-seed feet at default positions (mirrors keyboard.m init)
+    for (int i = 0; i < 6; i++)
+        gait_state.feet_world[i] = params.default_foot_positions[i];
+
+    // ============================================================
+    //  Main loop
+    // ============================================================
+    bool shutdown_requested = false;
+    bool shutdown_complete = false;
+    double voltage_poll_time = config::Servo2040VoltagePollInterval;
+    double relay_active_time = 0.0;
+    int voltage_critical_samples = 0;
+    bool voltage_valid = false;
+    double servo_voltage = 0.0;
+    bool current_valid = false;
+    double servo_current = 0.0;
+    bool voltage_warning = false;
+    bool voltage_critical = false;
+    double relay_inactivity_time = 0.0;
+    ControlInputState control_input;
+
+    auto set_wifi_requested_relay = [&]() {
+        WifiControllerSnapshot relay_snapshot = wifi_controller.snapshot();
+        if (!relay_snapshot.relay_control_active) return;
+        bool relay_hardware_target = relay_snapshot.target_relay_status;
+        bool complete_relay_request = true;
+        if (!relay_snapshot.target_relay_status && !relay_snapshot.relay_switch_ready) {
+            if (relay_snapshot.relay_status) return;
+            relay_hardware_target = true;
+            complete_relay_request = false;
+        }
+
+        bool relay_set = true;
+        if (options.servo2040_enabled) {
+            relay_set = servo2040.is_connected()
+                     && servo2040.set_relay(relay_hardware_target);
+        }
+        if (relay_set) {
+            wifi_controller.update_relay_status(relay_hardware_target, complete_relay_request);
+            relay_active_time = 0.0;
+            voltage_critical_samples = 0;
+            voltage_warning = false;
+        }
+    };
+
+#ifdef HEXAPOD_HEADLESS
+    using HeadlessClock = std::chrono::steady_clock;
+    constexpr double TargetFrameSeconds = 1.0 / 60.0;
+    const auto target_frame_duration =
+        std::chrono::duration_cast<HeadlessClock::duration>(
+            std::chrono::duration<double>(TargetFrameSeconds));
+    auto last_frame_time = HeadlessClock::now() - target_frame_duration;
+#endif
+
+    while (!shutdown_complete) {
+#ifdef HEXAPOD_HEADLESS
+        if (headless_shutdown_signal != 0) {
+            shutdown_requested = true;
+        }
+
+        const auto frame_start_time = HeadlessClock::now();
+        double dt = std::min(
+            std::chrono::duration<double>(frame_start_time - last_frame_time).count(),
+            0.05);
+        last_frame_time = frame_start_time;
+#else
+        if (WindowShouldClose()) {
+            shutdown_requested = true;
+        }
+
+        double dt = std::min((double)GetFrameTime(), 0.05);  // cap at 50 ms
+#endif
+        if (options.servo2040_enabled && servo2040.is_connected() && !voltage_critical) {
+            if (servo2040.relay_enabled()) {
+                relay_active_time += dt;
+            } else {
+                relay_active_time = 0.0;
+                voltage_critical_samples = 0;
+                voltage_warning = false;
+            }
+            voltage_poll_time += dt;
+            if (voltage_poll_time >= config::Servo2040VoltagePollInterval) {
+                voltage_poll_time = 0.0;
+                double reading = 0.0;
+                if (servo2040.read_voltage(reading)) {
+                    servo_voltage = reading;
+                    voltage_valid = true;
+                    wifi_controller.update_voltage(servo_voltage);
+                    const bool voltage_guard_armed =
+                        servo2040.relay_enabled()
+                        && relay_active_time >= config::Servo2040VoltageStartupDelay;
+                    voltage_warning = voltage_guard_armed
+                                   && servo_voltage < config::Servo2040VoltageWarn;
+                    if (voltage_guard_armed
+                        && servo_voltage < config::Servo2040VoltageCritical) {
+                        voltage_critical_samples++;
+                        if (voltage_critical_samples >= config::Servo2040VoltageCriticalSamples) {
+                            voltage_critical = true;
+                            voltage_warning = false;
+                            shutdown_requested = true;
+                        }
+                    } else {
+                        voltage_critical_samples = 0;
+                    }
+                }
+                double current_reading = 0.0;
+                if (servo2040.read_current(current_reading)) {
+                    servo_current = current_reading;
+                    current_valid = true;
+                    wifi_controller.update_current(servo_current);
+                }
+            }
+        }
+
+        set_wifi_requested_relay();
+
+        InputState input = read_input_state();
+        apply_wifi_controller_snapshot(input, wifi_controller.snapshot());
+        control_input = update_control_input_source(input, control_input);
+#ifdef HEXAPOD_HEADLESS
+        bool keyboard_enabled = false;
+#else
+        bool keyboard_enabled = control_input.active_source == ControlInputSource::KEYBOARD;
+#endif
+        bool wifi_enabled = control_input.active_source == ControlInputSource::WIFI;
+
+#ifndef HEXAPOD_HEADLESS
+        // ---- Mouse camera orbit --------------------------------
+        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+            Vector2 d = GetMouseDelta();
+            cam_azimuth   += d.x * 0.005f;
+            cam_elevation -= d.y * 0.005f;
+            cam_elevation  = std::clamp(cam_elevation,
+                                         config::CameraMinElevationDeg*D2R,
+                                         config::CameraMaxElevationDeg*D2R);
+        }
+        cam_distance -= GetMouseWheelMove() * 0.06f;
+        cam_distance  = std::clamp(cam_distance, config::CameraMinDistance, config::CameraMaxDistance);
+#endif
+
+        bool shift  = keyboard_enabled
+                   ? (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
+                   : (wifi_enabled ? false : gamepad_down(input, GAMEPAD_BUTTON_LEFT_THUMB));
+        bool ctrl = keyboard_enabled
+                 ? (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))
+                 : false;
+        KeyStatus keys;
+        RobotFrameState frame;
+        shutdown_complete = update_robot_control(options, dt, input, {keyboard_enabled, wifi_enabled, shift, ctrl},
+                                                 params, control, gait_state, base_pose, final_pose,
+                                                 robot_state, feet_world, keys, frame,
+                                                 shutdown_requested);
+        wifi_controller.update_robot_status(control.cmd.pose.z,
+                                            wifi_position_from_control(control),
+                                            wifi_gait_id(control.gait_type));
+        wifi_controller.update_motion_status(control.cmd.body_radius,
+                                             control.cmd.gait.step_height,
+                                             wifi_speed_from_control(control));
+        wifi_controller.update_shutdown_complete(control.shutdown_complete);
+        WifiControllerSnapshot activity_snapshot = wifi_controller.snapshot();
+        const bool local_robot_activity =
+            keys.kW || keys.kS || keys.kA || keys.kD || keys.kQ || keys.kE || keys.kR || keys.kF
+            || control.active_dance != DanceMode::NONE
+            || control.startup_phase != StartupPhase::DONE
+            || control.shutdown_requested;
+        const bool relay_can_timeout =
+            activity_snapshot.relay_status
+            && activity_snapshot.target_relay_status
+            && !activity_snapshot.relay_control_active;
+        if (relay_can_timeout && !activity_snapshot.active && !local_robot_activity) {
+            relay_inactivity_time += dt;
+            if (relay_inactivity_time >= WifiRelayInactivityTimeout) {
+                wifi_controller.request_relay_status(false, false);
+                relay_inactivity_time = 0.0;
+            }
+        } else {
+            relay_inactivity_time = 0.0;
+        }
+        set_wifi_requested_relay();
+
+        std::array<int, 18> servo2040_pin_pwm = pwm_by_servo2040_pin_unflipped(frame.current_pwm);
+
+        if (!options.direct_pwm_control_enabled && options.servo2040_pwm_sim_enabled) {
+            frame.render_pwm = pwm_by_leg_from_servo2040_pin(servo2040_pin_pwm);
+            frame.render_state = robot_state_from_pwm(frame.render_pwm);
+        }
+
+        if (options.servo2040_enabled) {
+            if (shutdown_complete) {
+                servo2040.close();
+                wifi_controller.update_relay_status(servo2040.relay_enabled());
+            } else if (servo2040.is_connected()) {
+                servo2040.send_pwm_values(pwm_by_servo2040_pin_for_hardware(frame.current_pwm));
+            }
+        }
+
+        // ---- FK + compute max IK error -------------------------
+        LegPoints fk_pts[6];
+        double max_err = 0.0;
+        double max_drag = 0.0;
+        for (int i = 0; i < 6; i++) {
+            fk_pts[i] = compute_leg_fk(params, final_pose, frame.render_state.legs[i], i);
+            if (options.direct_pwm_control_enabled) {
+                feet_world[i] = fk_pts[i].pts[4];
+            }
+            double err = options.direct_pwm_control_enabled ? 0.0 : (fk_pts[i].pts[4] - feet_world[i]).norm();
+            if (err > max_err) max_err = err;
+            if (gait_state.drag_distance[i] > max_drag) max_drag = gait_state.drag_distance[i];
+        }
+        wifi_controller.update_visualizer_frame(final_pose, fk_pts, feet_world,
+                                                gait_state.is_swing, frame.render_state,
+                                                frame.render_pwm);
+
+#ifndef HEXAPOD_HEADLESS
+        // ---- Record foot-plant events for trail -----------------
+        if (!options.direct_pwm_control_enabled) {
+            record_footprints(feet_world, gait_state.is_swing, (float)dt);
+        }
+
+        // ---- Camera follow body --------------------------------
+        float tx = (float)final_pose.x, ty = (float)final_pose.y, tz = (float)final_pose.z;
+        Vector3 tgt = to_rl(tx, ty, tz);
+        camera.target = tgt;
+        camera.position = {
+            tgt.x + cam_distance * cosf(cam_elevation) * cosf(cam_azimuth),
+            tgt.y + cam_distance * sinf(cam_elevation),
+            tgt.z + cam_distance * cosf(cam_elevation) * sinf(cam_azimuth)
+        };
+
+        // ====================================================
+        //  Draw
+        // ====================================================
+        BeginDrawing();
+        Color background = {240, 242, 245, 255};
+        if (voltage_critical) {
+            background = {190, 35, 35, 255};
+        } else if (voltage_warning) {
+            double period = std::max(0.1, config::VoltageWarningPulseSeconds);
+            double phase = std::fmod(GetTime(), period) / period;
+            double pulse = std::max(0.0, std::cos(phase * 2.0 * M_PI));
+            pulse = pulse * pulse * pulse;
+            auto mix = [&](unsigned char a, unsigned char b) {
+                return (unsigned char)((double)a + ((double)b - (double)a) * pulse);
+            };
+            background = {mix(240, 245), mix(242, 210), mix(245, 40), 255};
+        }
+        ClearBackground(background);
+
+        BeginMode3D(camera);
+            draw_scene(params, final_pose, fk_pts, feet_world, gait_state.is_swing);
+        EndMode3D();
+
+        draw_hud({
+            SCR_W, SCR_H,
+            options, input, servo2040,
+            keyboard_enabled, wifi_enabled,
+            control.cmd, final_pose, frame.render_state, gait_state, frame.render_pwm,
+            control.gait_type, control.active_dance,
+            control.current_walk_speed, control.current_strafe_speed, control.current_spin_rate,
+            max_err, max_drag,
+            control.selected_pwm_leg, control.selected_pwm_joint,
+            ctrl, shift,
+            keys.kW, keys.kS, keys.kA, keys.kD, keys.kQ, keys.kE, keys.kR, keys.kF,
+            voltage_valid, servo_voltage, current_valid, servo_current,
+            voltage_warning, voltage_critical
+        });
+
+        EndDrawing();
+#else
+        (void)max_err;
+        (void)max_drag;
+        (void)voltage_valid;
+        (void)current_valid;
+        (void)servo_voltage;
+        (void)servo_current;
+        (void)voltage_warning;
+        std::this_thread::sleep_until(frame_start_time + target_frame_duration);
+#endif
+    }
+
+#ifndef HEXAPOD_HEADLESS
+    CloseWindow();
+#endif
+    wifi_controller.stop();
+    return 0;
+}
