@@ -1,6 +1,5 @@
 <div align="center" style="display: flex; justify-content: center; align-items: center; gap: 16px;">
-  <img src="assets/previewdark.png" height="125" />
-  <img src="assets/title.png" height="70" />
+  <img src="assets/fullpreview.png" height="125" />
 </div>
 
 <div align="center">
