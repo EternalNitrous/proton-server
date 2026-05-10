@@ -1,7 +1,7 @@
 // ============================================================
 //  main.cpp — Hexapod Kinematic Simulator
 //
-//  The simulator loop lives here; input, rendering, Servo2040,
+//  The simulator loop lives here; Wi-Fi control, Servo2040,
 //  options, and user-tunable configuration are split into modules.
 // ============================================================
 #include "config.h"
@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 
     std::signal(SIGINT, handle_headless_shutdown_signal);
     std::signal(SIGTERM, handle_headless_shutdown_signal);
-    std::printf("Headless mode: local rendering and input disabled.\n");
+    std::printf("Headless mode: local window and keyboard/gamepad input disabled.\n");
 
     WifiControllerServer wifi_controller;
     if (wifi_controller.start(options.wifi_controller_port)) {
