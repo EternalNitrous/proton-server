@@ -1,4 +1,16 @@
-# Hexapod Kinematic Simulator
+<div align="center" style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+  <img src="assets/previewdark.png" height="125" />
+  <img src="assets/title.png" height="70" />
+</div>
+
+<div align="center">
+  <img src="https://img.shields.io/github/issues/EternalNitrous/proton-server?style=flat&color=5863F6" />
+  <img src="https://img.shields.io/github/stars/EternalNitrous/proton-server?style=flat&color=5863F6" />
+</div>
+
+
+
+# Proton Server
 
 Headless hexapod simulation and control runtime with Wi-Fi control,
 Servo2040 serial output, gait generation, IK/FK, and telemetry endpoints.
@@ -96,13 +108,15 @@ To use a different port:
 
 Use the installer script from the repo root. It installs apt dependencies,
 checks out the selected branch, builds, and enables a `proton-server.service`
-startup service:
+startup service. On the headless branch, Servo2040 autodiscovery and Proton
+client mDNS discovery are enabled by default:
 
 ```bash
-sh scripts/install_raspbian.sh headless --servo2040 /dev/ttyACM0
+sh scripts/install_raspbian.sh headless
 ```
 
-Use `headless` for Raspberry Pi OS Lite. Use `main` on Raspberry Pi OS Desktop
+Use `--servo2040 /dev/ttyACM0` to force a serial port, or `--no-servo2040` to
+disable Servo2040 output/autodiscovery. Use `main` on Raspberry Pi OS Desktop
 when you want the local raylib window:
 
 ```bash
@@ -150,6 +164,11 @@ cmake --build . -j$(sysctl -n hw.ncpu)
 ```
 
 ## Servo2040 output
+
+The headless branch tries to autodiscover a Servo2040 on startup by scanning
+serial devices for Pico/RP2040/Servo2040/Pimoroni USB descriptors. Pass
+`--servo2040 PORT` to force a port, `--servo2040 auto` or `--auto-servo2040` to
+force autodiscovery, or `--no-servo2040` to run without hardware output.
 
 To stream generated PWM values to a Servo2040 board, pass the serial port when
 launching the executable:

@@ -3,7 +3,12 @@
 #include "config.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <optional>
+#include <vector>
 
 #ifdef _WIN32
 #else
@@ -12,6 +17,139 @@
     #include <termios.h>
     #include <unistd.h>
 #endif
+
+
+namespace {
+
+std::string lower_copy(std::string value)
+{
+    for (char& ch : value) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return value;
+}
+
+std::string read_small_file(const std::filesystem::path& path)
+{
+    std::ifstream in(path);
+    if (!in) return {};
+    std::string value;
+    std::getline(in, value);
+    return value;
+}
+
+int servo2040_descriptor_score(const std::string& descriptor)
+{
+    const std::string value = lower_copy(descriptor);
+    int score = 0;
+    if (value.find("servo2040") != std::string::npos || value.find("servo 2040") != std::string::npos) score += 6;
+    if (value.find("rp2040") != std::string::npos) score += 4;
+    if (value.find("pico") != std::string::npos) score += 3;
+    if (value.find("pimoroni") != std::string::npos) score += 2;
+    if (value.find("usbmodem") != std::string::npos) score += 1;
+    return score;
+}
+
+std::string sysfs_descriptor_for_tty(const std::filesystem::path& device)
+{
+#ifndef _WIN32
+    namespace fs = std::filesystem;
+    const fs::path tty = device.filename();
+    fs::path current = fs::path("/sys/class/tty") / tty / "device";
+    std::error_code ec;
+    current = fs::weakly_canonical(current, ec);
+    if (ec) current = fs::path("/sys/class/tty") / tty / "device";
+
+    std::string descriptor = device.string();
+    for (int depth = 0; depth < 8 && !current.empty(); depth++) {
+        for (const char* file : {"product", "manufacturer", "interface", "modalias", "idVendor", "idProduct"}) {
+            const std::string value = read_small_file(current / file);
+            if (!value.empty()) {
+                descriptor += " ";
+                descriptor += value;
+            }
+        }
+        current = current.parent_path();
+    }
+    return descriptor;
+#else
+    return device.string();
+#endif
+}
+
+void add_matching_devices(std::vector<std::filesystem::path>& out,
+                          const std::filesystem::path& directory,
+                          const std::string& prefix)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(directory, ec)) return;
+    for (const auto& entry : fs::directory_iterator(directory, fs::directory_options::skip_permission_denied, ec)) {
+        if (ec) break;
+        const std::string name = entry.path().filename().string();
+        if (name.rfind(prefix, 0) == 0) out.push_back(entry.path());
+    }
+}
+
+std::optional<std::string> discover_linux_serial_by_id()
+{
+#ifndef _WIN32
+    namespace fs = std::filesystem;
+    const fs::path by_id = "/dev/serial/by-id";
+    std::error_code ec;
+    if (!fs::is_directory(by_id, ec)) return std::nullopt;
+
+    int best_score = 0;
+    fs::path best_path;
+    for (const auto& entry : fs::directory_iterator(by_id, fs::directory_options::skip_permission_denied, ec)) {
+        if (ec) break;
+        const std::string descriptor = entry.path().filename().string();
+        const int score = servo2040_descriptor_score(descriptor);
+        if (score > best_score) {
+            best_score = score;
+            best_path = entry.path();
+        }
+    }
+    if (best_score >= 3) return best_path.string();
+#endif
+    return std::nullopt;
+}
+
+} // namespace
+
+std::string discover_servo2040_port()
+{
+    if (auto by_id = discover_linux_serial_by_id()) {
+        return *by_id;
+    }
+
+    namespace fs = std::filesystem;
+    std::vector<fs::path> candidates;
+#ifdef __APPLE__
+    add_matching_devices(candidates, "/dev", "cu.usbmodem");
+    add_matching_devices(candidates, "/dev", "tty.usbmodem");
+    add_matching_devices(candidates, "/dev", "cu.usbserial");
+#else
+    add_matching_devices(candidates, "/dev", "ttyACM");
+    add_matching_devices(candidates, "/dev", "ttyUSB");
+#endif
+
+    int best_score = 0;
+    fs::path best_path;
+    for (const fs::path& candidate : candidates) {
+        const std::string descriptor = sysfs_descriptor_for_tty(candidate);
+        int score = servo2040_descriptor_score(descriptor);
+#ifdef __APPLE__
+        if (score == 1 && candidates.size() == 1) score = 3;
+#endif
+        if (score > best_score) {
+            best_score = score;
+            best_path = candidate;
+        }
+    }
+
+    return best_score >= 3 ? best_path.string() : std::string{};
+}
 
 Servo2040Client::~Servo2040Client()
 {

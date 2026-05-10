@@ -80,3 +80,4 @@ std::array<PWMValues, 6> pwm_by_leg_from_servo2040_pin(const std::array<int, 18>
 RobotState robot_state_from_pwm(const std::array<PWMValues, 6>& leg_pwm);
 int& selected_pwm(PWMValues& pwm, int joint);
 std::array<PWMValues, 6> pwm_from_robot_state(const RobotState& state);
+std::string discover_servo2040_port();

@@ -15,7 +15,9 @@ Installs Raspberry Pi OS / Raspbian dependencies, checks out the requested
 branch, builds the simulator, and enables it at startup with systemd.
 
 Options:
-  --servo2040 PORT              Pass a Servo2040 serial port to the service.
+  --servo2040 PORT|auto         Pass a Servo2040 serial port or force autodiscovery.
+  --auto-servo2040              Force Servo2040 autodiscovery.
+  --no-servo2040                Disable Servo2040 output/autodiscovery.
   --servo2040-port PORT         Same as --servo2040.
   --pwm-control                 Start in direct PWM control mode.
   --pwm-control-servo2040 PORT  Start direct PWM control with Servo2040 output.
@@ -27,7 +29,7 @@ Options:
   -h, --help                    Show this help.
 
 Examples:
-  $0 headless --servo2040 /dev/ttyACM0
+  $0 headless
   $0 main --port 8081
 EOF
 }
@@ -63,7 +65,7 @@ while [ "$#" -gt 0 ]; do
             append_arg "$2"
             shift 2
             ;;
-        --pwm-control|--servo2040-pwm-sim|--pwm-sim)
+        --auto-servo2040|--no-servo2040|--no-servo2040-autodiscover|--pwm-control|--servo2040-pwm-sim|--pwm-sim)
             append_arg "$1"
             shift
             ;;

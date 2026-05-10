@@ -4,6 +4,7 @@
 
 struct AppOptions {
     bool servo2040_enabled = false;
+    bool servo2040_autodiscover = false;
     bool servo2040_pwm_sim_enabled = false;
     bool direct_pwm_control_enabled = false;
     int wifi_controller_port = 8080;

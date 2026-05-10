@@ -20,6 +20,8 @@ target_include_directories(proton-server PRIVATE
     src/
 )
 
+target_compile_definitions(proton-server PRIVATE PROTON_SERVER_HEADLESS=1)
+
 # ============================================================
 #  Platform-specific settings
 # ============================================================

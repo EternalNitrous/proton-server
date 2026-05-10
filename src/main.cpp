@@ -82,6 +82,16 @@ int main(int argc, char** argv)
     RobotParams params = get_robot_params();
 
     Servo2040Client servo2040;
+    if (options.servo2040_autodiscover && options.servo2040_port.empty()) {
+        options.servo2040_port = discover_servo2040_port();
+        if (!options.servo2040_port.empty()) {
+            options.servo2040_enabled = true;
+            std::printf("Servo2040: discovered %s\n", options.servo2040_port.c_str());
+        } else {
+            options.servo2040_enabled = false;
+            std::fprintf(stderr, "Servo2040: autodiscovery found no Pico/RP2040 serial port; continuing without hardware output.\n");
+        }
+    }
     if (options.servo2040_enabled) {
         bool ok = servo2040.open(options.servo2040_port);
         if (!ok) {
