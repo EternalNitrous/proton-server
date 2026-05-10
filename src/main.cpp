@@ -74,7 +74,7 @@ int main(int argc, char** argv)
         "Hexapod Kinematic Simulator  |  Active input switching");
     SetTargetFPS(60);
 
-    // ---- Camera (mirrors MATLAB view(ax,3): azimuth=-37.5, elev=30) --
+    // ---- Camera ------------------------------------------------
     constexpr float D2R = 3.14159265358979323846f / 180.0f;
     float cam_azimuth   = config::CameraAzimuthDeg * D2R;
     float cam_elevation = config::CameraElevationDeg * D2R;
@@ -109,7 +109,7 @@ int main(int argc, char** argv)
     RobotState robot_state;
     Vec3 feet_world[6];
 
-    // Pre-seed feet at default positions (mirrors keyboard.m init)
+    // Pre-seed feet at default positions.
     for (int i = 0; i < 6; i++)
         gait_state.feet_world[i] = params.default_foot_positions[i];
 

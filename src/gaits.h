@@ -1,8 +1,6 @@
 #pragma once
 // ============================================================
-//  gaits.h
-//  C++ port of firmware/hexapod_gait_engine.m from the supplied
-//  Kinematics_Model_MATLABS archive.
+//  gaits.h — gait phase tables and foot trajectory engine
 // ============================================================
 #include "config.h"
 #include "types.h"

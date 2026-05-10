@@ -1,9 +1,6 @@
 #pragma once
 // ============================================================
-//  kinematics.h
-//  Direct port of:
-//    firmware/hexapod_ik_solver.m
-//    visualizer/compute_leg_fk.m
+//  kinematics.h — inverse and forward kinematics helpers
 // ============================================================
 #include "config.h"
 #include "types.h"
@@ -14,7 +11,6 @@
 // ============================================================
 //  4×4 column-major homogeneous transform matrix
 //  Element (row, col) = m[col*4 + row]  (same layout as OpenGL)
-//  Matches MATLAB's matrix convention for FK chain.
 // ============================================================
 struct Mat4 {
     double m[16];
@@ -25,7 +21,7 @@ struct Mat4 {
         m[0] = m[5] = m[10] = m[15] = 1.0;
     }
 
-    // Named constructors (match MATLAB helpers in compute_leg_fk.m) --------
+    // Named constructors ---------------------------------------------------
 
     // Tr(x,y,z) — pure translation
     static Mat4 translate(double x, double y, double z) {

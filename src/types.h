@@ -1,7 +1,6 @@
 #pragma once
 // ============================================================
 //  types.h — core data structures for the hexapod simulation
-//  Mirrors the MATLAB struct layout exactly.
 // ============================================================
 #include "config.h"
 
@@ -27,14 +26,12 @@ struct Vec3 {
 };
 
 // ---- Body pose in world frame ----------------------------------
-// Matches MATLAB's base_pose / final_body_pose structs
 struct BasePose {
     double x = 0, y = 0, z = 0.12;
     double roll = 0, pitch = 0, yaw = 0;
 };
 
 // ---- Per-leg joint angles (radians) ----------------------------
-// Mirrors MATLAB's robot_state.legs(i)
 struct LegJoints {
     double hip   = 0;      // always 0 (no hip joint on this platform)
     double coxa  = 0;
@@ -48,7 +45,6 @@ struct RobotState {
 };
 
 // ---- Gait state (persistent across frames) ---------------------
-// Mirrors MATLAB's gait_state struct
 struct GaitState {
     bool   initialized = false;
     double master_phase = 0;
@@ -74,7 +70,6 @@ struct GaitState {
 };
 
 // ---- Command structure -----------------------------------------
-// Mirrors MATLAB's cmd struct (keyboard.m / main_testing.m)
 struct Command {
     struct GaitCmd {
         double cycle_time   = config::Motion.cycle_time;
