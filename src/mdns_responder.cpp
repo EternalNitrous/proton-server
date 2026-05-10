@@ -104,11 +104,11 @@ std::string sanitized_host_name()
     std::array<char, 256> buffer = {};
 #ifdef _WIN32
     if (gethostname(buffer.data(), static_cast<int>(buffer.size() - 1)) != 0) {
-        return "hexapod-simulator";
+        return "proton-server";
     }
 #else
     if (gethostname(buffer.data(), buffer.size() - 1) != 0) {
-        return "hexapod-simulator";
+        return "proton-server";
     }
 #endif
 
@@ -130,7 +130,7 @@ std::string sanitized_host_name()
         }
     }
     while (!cleaned.empty() && cleaned.back() == '-') cleaned.pop_back();
-    return cleaned.empty() ? "hexapod-simulator" : cleaned;
+    return cleaned.empty() ? "proton-server" : cleaned;
 }
 
 std::string host_fqdn(const std::string& host_name)

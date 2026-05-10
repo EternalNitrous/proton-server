@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SERVICE_NAME="hexapod-sim"
+SERVICE_NAME="proton-server"
 BRANCH="headless"
 APP_ARGS=""
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
@@ -109,7 +109,7 @@ run_repo() {
 
 cd "$REPO_DIR"
 
-[ -d .git ] || die "run this from inside a cloned hexapod_sim git repo"
+[ -d .git ] || die "run this from inside a cloned proton-server git repo"
 id "$SERVICE_USER" >/dev/null 2>&1 || die "service user does not exist: $SERVICE_USER"
 
 echo "Installing build dependencies..."
@@ -139,14 +139,14 @@ echo "Building $BRANCH in $BUILD_DIR..."
 run_repo cmake -S "$REPO_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
 run_repo cmake --build "$BUILD_DIR" -j "$(getconf _NPROCESSORS_ONLN)"
 
-EXECUTABLE="$BUILD_DIR/hexapod_sim"
+EXECUTABLE="$BUILD_DIR/proton-server"
 [ -x "$EXECUTABLE" ] || die "build finished, but executable was not found: $EXECUTABLE"
 
 SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
 echo "Writing $SERVICE_FILE..."
 {
     echo "[Unit]"
-    echo "Description=Hexapod simulator ($BRANCH)"
+    echo "Description=Proton server ($BRANCH)"
     echo "After=network-online.target"
     echo "Wants=network-online.target"
     echo

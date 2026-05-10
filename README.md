@@ -31,7 +31,7 @@ when a new source starts sending control input, it takes over immediately.
 The simulator starts a Wi-Fi controller server on port 8080 by default:
 
 ```bash
-./build/hexapod_sim
+./build/proton-server
 ```
 
 The simulator also advertises itself on the local network with embedded
@@ -84,7 +84,7 @@ reported in status JSON.
 To use a different port:
 
 ```bash
-./build/hexapod_sim --port 8081
+./build/proton-server --port 8081
 ```
 
 ### Gamepad
@@ -139,7 +139,7 @@ raylib is fetched and built automatically — no manual install required.
 ### Raspberry Pi OS / Raspbian
 
 Use the installer script from the repo root. It installs apt dependencies,
-checks out the selected branch, builds, and enables a `hexapod-sim.service`
+checks out the selected branch, builds, and enables a `proton-server.service`
 startup service:
 
 ```bash
@@ -164,7 +164,7 @@ sh scripts/install_raspbian.sh main
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j$(nproc)
-./hexapod_sim
+./proton-server
 ```
 
 ### Windows (Visual Studio)
@@ -174,7 +174,7 @@ mkdir build
 cd build
 cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release
-Release\hexapod_sim.exe
+Release\proton-server.exe
 ```
 
 ### Windows (MinGW / MSYS2)
@@ -183,7 +183,7 @@ Release\hexapod_sim.exe
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j4
-hexapod_sim.exe
+proton-server.exe
 ```
 
 ### macOS (Homebrew)
@@ -193,7 +193,7 @@ brew install cmake
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j$(sysctl -n hw.ncpu)
-./hexapod_sim
+./proton-server
 ```
 
 ## Servo2040 output
@@ -202,13 +202,13 @@ To stream the PWM values shown in the left HUD to a Servo2040 board, pass the
 serial port when launching the executable:
 
 ```bash
-./build/hexapod_sim --servo2040 /dev/cu.usbmodemXXXX
+./build/proton-server --servo2040 /dev/cu.usbmodemXXXX
 ```
 
 Windows example:
 
 ```bat
-build\Release\hexapod_sim.exe --servo2040 COM3
+build\Release\proton-server.exe --servo2040 COM3
 ```
 
 The simulator opens the port at 115200 baud, enables relay pin 26 before
@@ -232,20 +232,20 @@ To skip gait and IK entirely and directly pose the simulated robot with PWM
 values, run:
 
 ```bash
-./build/hexapod_sim --pwm-control
+./build/proton-server --pwm-control
 ```
 
 To pipe those manually controlled PWM values to the real Servo2040 at the same
 time, pass a serial port too:
 
 ```bash
-./build/hexapod_sim --pwm-control --servo2040 /dev/cu.usbmodemXXXX
+./build/proton-server --pwm-control --servo2040 /dev/cu.usbmodemXXXX
 ```
 
 Or use the convenience flag:
 
 ```bash
-./build/hexapod_sim --pwm-control-servo2040 /dev/cu.usbmodemXXXX
+./build/proton-server --pwm-control-servo2040 /dev/cu.usbmodemXXXX
 ```
 
 Direct PWM mode starts every servo at 1500 us. With a gamepad connected, use
