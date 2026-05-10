@@ -1,32 +1,8 @@
 #pragma once
 
-#include "config.h"
 #include "wifi_controller.h"
 
-#include "raylib_compat.h"
-
-#include <array>
-
 struct InputState {
-    bool device_available = false;
-    bool mapped_gamepad = false;
-    bool raw_joystick = false;
-    int device = -1;
-    float left_x = 0.0f;
-    float left_y = 0.0f;
-    float right_x = 0.0f;
-    float right_y = 0.0f;
-    float left_trigger = 0.0f;
-    float right_trigger = 0.0f;
-    int axis_count = 0;
-    int button_count = 0;
-    int hat_count = 0;
-    std::array<float, config::MaxRawAxesToTrack> raw_axes = {};
-    std::array<float, config::MaxRawAxesToTrack> prev_raw_axes = {};
-    std::array<bool, config::MaxRawButtonsToTrack> raw_buttons = {};
-    std::array<bool, config::MaxRawButtonsToTrack> prev_raw_buttons = {};
-    std::array<unsigned char, config::MaxRawHatsToTrack> raw_hats = {};
-    std::array<unsigned char, config::MaxRawHatsToTrack> prev_raw_hats = {};
     bool wifi_available = false;
     bool wifi_connected = false;
     bool wifi_active = false;
@@ -62,15 +38,12 @@ struct InputState {
 };
 
 enum class ControlInputSource {
-    KEYBOARD,
-    CONTROLLER,
+    NONE,
     WIFI
 };
 
 struct ControlInputState {
-    ControlInputSource active_source = ControlInputSource::KEYBOARD;
-    bool keyboard_requested = false;
-    bool controller_requested = false;
+    ControlInputSource active_source = ControlInputSource::NONE;
     bool wifi_requested = false;
 };
 
@@ -79,6 +52,3 @@ void apply_wifi_controller_snapshot(InputState& input,
                                     const WifiControllerSnapshot& wifi);
 ControlInputState update_control_input_source(const InputState& input,
                                               ControlInputState previous);
-bool gamepad_pressed(const InputState& input, int button);
-bool gamepad_down(const InputState& input, int button);
-const char* input_device_name(const InputState& input);

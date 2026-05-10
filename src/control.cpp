@@ -4,8 +4,6 @@
 #include "gaits.h"
 #include "kinematics.h"
 
-#include "raylib_compat.h"
-
 #include <algorithm>
 #include <cmath>
 
@@ -672,59 +670,6 @@ void update_direct_pwm_control(const AppOptions& options,
                                BasePose& final_pose,
                                RobotFrameState& frame)
 {
-    if (flags.keyboard_enabled) {
-        if (IsKeyPressed(KEY_ONE))   control.selected_pwm_leg = 0;
-        if (IsKeyPressed(KEY_TWO))   control.selected_pwm_leg = 1;
-        if (IsKeyPressed(KEY_THREE)) control.selected_pwm_leg = 2;
-        if (IsKeyPressed(KEY_FOUR))  control.selected_pwm_leg = 3;
-        if (IsKeyPressed(KEY_FIVE))  control.selected_pwm_leg = 4;
-        if (IsKeyPressed(KEY_SIX))   control.selected_pwm_leg = 5;
-        if (IsKeyPressed(KEY_LEFT))  control.selected_pwm_leg = (control.selected_pwm_leg + 5) % 6;
-        if (IsKeyPressed(KEY_RIGHT)) control.selected_pwm_leg = (control.selected_pwm_leg + 1) % 6;
-        if (IsKeyPressed(KEY_Z))     control.selected_pwm_joint = (control.selected_pwm_joint + 2) % 3;
-        if (IsKeyPressed(KEY_X) || IsKeyPressed(KEY_TAB))
-            control.selected_pwm_joint = (control.selected_pwm_joint + 1) % 3;
-    } else if (!flags.wifi_enabled) {
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_LEFT_FACE_LEFT))
-            control.selected_pwm_leg = (control.selected_pwm_leg + 5) % 6;
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_LEFT_FACE_RIGHT))
-            control.selected_pwm_leg = (control.selected_pwm_leg + 1) % 6;
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_LEFT_FACE_UP))
-            control.selected_pwm_joint = (control.selected_pwm_joint + 2) % 3;
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_LEFT_FACE_DOWN))
-            control.selected_pwm_joint = (control.selected_pwm_joint + 1) % 3;
-    }
-
-    int pwm_step = flags.ctrl ? 1 : (flags.shift ? 50 : 10);
-    int& pwm = selected_pwm(control.direct_pwm[control.selected_pwm_leg], control.selected_pwm_joint);
-    bool pwm_up = false;
-    bool pwm_down = false;
-    if (flags.keyboard_enabled) {
-        pwm_up = IsKeyPressed(KEY_UP) || IsKeyPressedRepeat(KEY_UP)
-               || IsKeyPressed(KEY_EQUAL) || IsKeyPressedRepeat(KEY_EQUAL)
-               || IsKeyPressed(KEY_KP_ADD) || IsKeyPressedRepeat(KEY_KP_ADD);
-        pwm_down = IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN)
-                 || IsKeyPressed(KEY_MINUS) || IsKeyPressedRepeat(KEY_MINUS)
-                 || IsKeyPressed(KEY_KP_SUBTRACT) || IsKeyPressedRepeat(KEY_KP_SUBTRACT);
-        for (int ch = GetCharPressed(); ch > 0; ch = GetCharPressed()) {
-            if (ch == '+' || ch == '=') pwm_up = true;
-            if (ch == '-' || ch == '_') pwm_down = true;
-        }
-    } else if (!flags.wifi_enabled) {
-        pwm_up = gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
-        pwm_down = gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
-    }
-    if (pwm_up) pwm = clamp_pwm(pwm + pwm_step);
-    if (pwm_down) pwm = clamp_pwm(pwm - pwm_step);
-    if ((flags.keyboard_enabled && IsKeyPressed(KEY_R))
-        || (!flags.wifi_enabled && gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))) {
-        pwm = config::PwmNeutral;
-    }
-    if ((flags.keyboard_enabled && IsKeyPressed(KEY_C))
-        || (!flags.wifi_enabled && gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_UP))) {
-        control.direct_pwm = neutral_pwm_values();
-    }
-
     BasePose direct_pwm_pose;
     direct_pwm_pose.z = config::Motion.start_height;
 
@@ -740,6 +685,9 @@ void update_direct_pwm_control(const AppOptions& options,
     }
 
     (void)options;
+    (void)input;
+    (void)flags;
+    (void)control;
 }
 
 void update_gait_selection(const InputState& input,
@@ -749,22 +697,7 @@ void update_gait_selection(const InputState& input,
                            GaitState& gait_state)
 {
     GaitType new_gait = control.gait_type;
-    if (flags.keyboard_enabled) {
-        if (IsKeyPressed(KEY_TAB)) new_gait = (GaitType)(((int)control.gait_type + 1) % 4);
-        if (IsKeyPressed(KEY_ONE))   new_gait = GaitType::TRIPOD;
-        if (IsKeyPressed(KEY_TWO))   new_gait = GaitType::RIPPLE;
-        if (IsKeyPressed(KEY_THREE)) new_gait = GaitType::AMBLE;
-        if (IsKeyPressed(KEY_FOUR))  new_gait = GaitType::RIPPLE_EXT;
-    } else if (!flags.wifi_enabled) {
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_DOWN))
-            new_gait = (GaitType)(((int)control.gait_type + 1) % 4);
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_LEFT))
-            new_gait = GaitType::TRIPOD;
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_UP))
-            new_gait = GaitType::RIPPLE;
-        if (gamepad_pressed(input, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
-            new_gait = GaitType::AMBLE;
-    } else if (input.wifi_gait_control_active) {
+    if (flags.wifi_enabled && input.wifi_gait_control_active) {
         new_gait = gait_type_from_wifi_id(input.wifi_gait);
     }
     if (new_gait != control.gait_type) {
@@ -864,21 +797,7 @@ void update_locomotion_control(double dt,
         }
     };
 
-    if (flags.keyboard_enabled) {
-        keys.kW = IsKeyDown(KEY_W), keys.kS = IsKeyDown(KEY_S);
-        keys.kA = IsKeyDown(KEY_A), keys.kD = IsKeyDown(KEY_D);
-        keys.kQ = IsKeyDown(KEY_Q), keys.kE = IsKeyDown(KEY_E);
-        keys.kR = IsKeyDown(KEY_R), keys.kF = IsKeyDown(KEY_F);
-
-        walk_input = (keys.kW ? 1.0 : 0.0) - (keys.kS ? 1.0 : 0.0);
-        strafe_input = (keys.kA ? 1.0 : 0.0) - (keys.kD ? 1.0 : 0.0);
-        turn_input = (keys.kQ ? 1.0 : 0.0) - (keys.kE ? 1.0 : 0.0);
-        height_input = (keys.kR ? 1.0 : 0.0) - (keys.kF ? 1.0 : 0.0);
-        spd = flags.shift ? motion.creep_scale : 1.0;
-        if (IsKeyDown(KEY_UP)) front_back_dance_speed = 1.0;
-        if (IsKeyDown(KEY_LEFT)) side_dance_speed = 1.0;
-        if (IsKeyDown(KEY_RIGHT)) circle_dance_speed = 1.0;
-    } else if (flags.wifi_enabled) {
+    if (flags.wifi_enabled) {
         spd = 1.0;
         if (input.wifi_relay_status) {
             apply_axis_action(input.wifi_primary_x_action, -input.wifi_primary_x);
@@ -907,27 +826,6 @@ void update_locomotion_control(double dt,
         keys.kD = strafe_input < -0.05;
         keys.kQ = turn_input > 0.05;
         keys.kE = turn_input < -0.05;
-    } else {
-        spd = flags.shift ? motion.creep_scale : 1.0;
-        walk_input = -input.left_y;
-        strafe_input = -input.right_x;
-        turn_input = -input.left_x;
-        height_input = (gamepad_down(input, GAMEPAD_BUTTON_RIGHT_TRIGGER_1) ? 1.0 : 0.0)
-                     - (gamepad_down(input, GAMEPAD_BUTTON_LEFT_TRIGGER_1) ? 1.0 : 0.0);
-        height_input = std::clamp(height_input, -1.0, 1.0);
-        speed_adjust_input = input.left_trigger - input.right_trigger;
-        if (gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_UP)) front_back_dance_speed = 1.0;
-        if (gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) side_dance_speed = 1.0;
-        if (gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) circle_dance_speed = 1.0;
-
-        keys.kW = walk_input > 0.05;
-        keys.kS = walk_input < -0.05;
-        keys.kA = strafe_input > 0.05;
-        keys.kD = strafe_input < -0.05;
-        keys.kQ = turn_input > 0.05;
-        keys.kE = turn_input < -0.05;
-        keys.kR = height_input > 0.05;
-        keys.kF = height_input < -0.05;
     }
 
     control.current_walk_speed += speed_adjust_input * motion.linear_speed_adjust_rate * dt;

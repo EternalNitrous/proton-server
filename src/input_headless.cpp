@@ -46,30 +46,13 @@ ControlInputState update_control_input_source(const InputState& input,
                                               ControlInputState previous)
 {
     ControlInputState next = previous;
-    next.keyboard_requested = false;
-    next.controller_requested = false;
     next.wifi_requested = input.wifi_active;
 
     if (next.wifi_requested) {
         next.active_source = ControlInputSource::WIFI;
     } else if (previous.active_source == ControlInputSource::WIFI && !input.wifi_connected) {
-        next.active_source = ControlInputSource::KEYBOARD;
+        next.active_source = ControlInputSource::NONE;
     }
 
     return next;
-}
-
-bool gamepad_pressed(const InputState&, int)
-{
-    return false;
-}
-
-bool gamepad_down(const InputState&, int)
-{
-    return false;
-}
-
-const char* input_device_name(const InputState&)
-{
-    return nullptr;
 }

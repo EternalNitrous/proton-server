@@ -12,9 +12,7 @@ Every module is a faithful, one-to-one port of the original `.m` files.
 | `src/kinematics.h` | `firmware/hexapod_ik_solver.m`, `visualizer/compute_leg_fk.m` |
 | `src/gaits.h` | `firmware/hexapod_gait_engine.m` |
 | `src/control.cpp` | Per-frame control updates, gait switching, direct PWM mode |
-| `src/input.cpp` | Optional GUI gamepad / joystick / keyboard input plumbing |
 | `src/input_headless.cpp` | Headless no-local-input stub for Wi-Fi / Servo2040 operation |
-| `src/visual.cpp` | Optional GUI 3-D drawing, footprints, HUD panels, controls legend |
 | `src/servo.cpp` | Servo angle/PWM conversion and Servo2040 serial output |
 | `src/wifi_controller.cpp` | Built-in Wi-Fi controller HTTP server |
 | `src/options.cpp` | Command-line option parsing |
@@ -22,12 +20,9 @@ Every module is a faithful, one-to-one port of the original `.m` files.
 
 ## Controls
 
-The default build is headless: it runs the same simulation, Wi-Fi controller,
-Servo2040 output, gait, IK, and visualizer websocket updates without opening a
-raylib window. In GUI builds, keyboard, controller, and Wi-Fi input switch
-actively while the simulator is running. The active source follows whichever
-method you are currently using; when a new source starts sending control input,
-it takes over immediately.
+This branch is headless: it runs the simulation, Wi-Fi controller, Servo2040
+output, gait, IK, and websocket state updates without opening a local window or
+reading local keyboard/gamepad input.
 
 ### Wi-Fi controller
 
@@ -90,54 +85,10 @@ To use a different port:
 ./build/hexapod_sim --port 8081
 ```
 
-### Gamepad
-
-| Control | Action |
-|---|---|
-| Left stick up / down | March forward / backward |
-| Left stick left / right | Turn left / right |
-| Right stick left / right | Strafe left / right |
-| LB / RB | Lower / raise body height |
-| LT / RT | Decrease / increase stored move speed |
-| Left stick click / L3 | Creep mode |
-| D-pad up | Dance sway front / back |
-| D-pad left | Dance sway side / side |
-| D-pad right | Dance circular body tilt |
-| A / Cross | Cycle through gaits |
-| X / Square | Select Tripod gait |
-| Y / Triangle | Select Ripple gait |
-| B / Circle | Select Amble gait |
-
-### Keyboard
-
-| Key | Action |
-|---|---|
-| W / S | March forward / backward |
-| A / D | Strafe left / right |
-| Q / E | Spin CCW / CW in place |
-| R / F | Raise / lower body height |
-| Up arrow | Dance sway front / back |
-| Left arrow | Dance sway side / side |
-| Right arrow | Dance circular body tilt |
-| Shift | Creep mode (half speed) |
-| 1 / 2 / 3 / 4 | Select gait (Tripod / Ripple / Amble / RippleExt) |
-| Tab | Cycle through gaits |
-| Right Mouse Drag | Orbit camera |
-| Scroll Wheel | Zoom |
-| Escape | Quit |
-
-Keys are fully combinable — W+A walks diagonally, W+E arcs like a car-turn, etc.
-Keyboard, mouse, and gamepad controls require a GUI build.
-
 ## Build requirements
 
 - CMake ≥ 3.16
 - C++17 compiler (GCC, Clang, MSVC)
-- Git and an internet connection only when building the optional GUI, because
-  FetchContent downloads raylib
-
-Headless builds do not fetch raylib. GUI builds fetch and build raylib
-automatically — no manual install required.
 
 ## Build instructions
 
@@ -148,17 +99,6 @@ automatically — no manual install required.
 
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j$(nproc)
-./hexapod_sim
-```
-
-To build the optional GUI renderer and local keyboard/gamepad input path:
-
-```bash
-# Ubuntu/Debian GUI builds also need: libx11-dev libxrandr-dev libxinerama-dev
-#                                    libxcursor-dev libxi-dev libgl1-mesa-dev
-
-cmake .. -DCMAKE_BUILD_TYPE=Release -DHEXAPOD_ENABLE_GUI=ON
 cmake --build . -j$(nproc)
 ./hexapod_sim
 ```
@@ -215,13 +155,12 @@ exits. The `--servo2040-port PORT` flag is also accepted.
 While connected, the simulator reads Servo2040 current pin 24 and voltage pin
 25 every 0.5 seconds. Voltage shutdown is armed only after the relay has been
 on for 3 seconds; low voltage while the relay is off is ignored. Once armed,
-below 7.0 V the GUI background pulses yellow every 5 seconds. Two consecutive
-readings below 6.0 V turn the GUI background red, request the walking shutdown
-sequence, and turn the relay off when shutdown completes.
+two consecutive readings below 6.0 V request the walking shutdown sequence and
+turn the relay off when shutdown completes.
 
-For hardware-free debugging in a GUI build, run with `--servo2040-pwm-sim` or
-`--pwm-sim`. This renders the simulated robot from the same Servo2040 PWM
-packet that would be sent over serial, including the pin mapping.
+For hardware-free debugging, run with `--servo2040-pwm-sim` or `--pwm-sim`.
+This mirrors the same Servo2040 PWM packet that would be sent over serial,
+including the pin mapping.
 Direction flips for the physical hexapod are applied only to the serial output.
 
 To skip gait and IK entirely and directly pose the simulated robot with PWM
@@ -244,14 +183,9 @@ Or use the convenience flag:
 ./build/hexapod_sim --pwm-control-servo2040 /dev/cu.usbmodemXXXX
 ```
 
-Direct PWM mode starts every servo at 1500 us. With a gamepad connected, use
-D-pad left/right to select a leg, D-pad up/down to select coxa/femur/tibia,
-`A`/`B` to change PWM, left stick click / `L3` for 50 us steps, `X` to reset the selected PWM to
-1500, and `Y` to restore the all-1500 startup pose. Without a gamepad, use
-`1`-`6` or left/right arrows to select a leg, `Z`/`X` or `Tab` to select a
-joint, and up/down arrows or `+`/`-` to change PWM. Hold `Ctrl` for 1 us steps
-or `Shift` for 50 us steps. `R` resets the selected PWM to 1500 and `C`
-restores the all-1500 startup pose.
+Direct PWM mode starts every servo at 1500 us. In this headless branch there is
+no local keyboard/gamepad PWM editor; use it with Servo2040 output or extend the
+Wi-Fi protocol if manual remote PWM editing is needed.
 
 ## Robot specifications
 
@@ -279,4 +213,4 @@ All kinematics match the MATLAB source precisely:
 - **FK**: Standard 4×4 homogeneous transform chain (Rz–Ry–Rx, column-major)
 - **Gaits**: Table-driven phase windows, phase-locked mode switching, strain-triggered realignment, stride safety, Raibert foot placement, workspace clamping, and body sway
 
-The FK error (yellow lines, if any) shown in the HUD should be ≤ 0.1 mm under normal operation.
+FK error should be <= 0.1 mm under normal operation.

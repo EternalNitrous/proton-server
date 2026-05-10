@@ -20,10 +20,7 @@ struct KeyStatus {
 };
 
 struct ControlFlags {
-    bool keyboard_enabled = false;
     bool wifi_enabled = false;
-    bool shift = false;
-    bool ctrl = false;
 };
 
 enum class StartupPhase {

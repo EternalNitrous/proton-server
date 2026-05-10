@@ -4,8 +4,6 @@
 //  The simulator loop lives here; input, rendering, Servo2040,
 //  options, and user-tunable configuration are split into modules.
 // ============================================================
-#include "raylib_compat.h"
-
 #include "config.h"
 #include "control.h"
 #include "input.h"
@@ -13,9 +11,6 @@
 #include "options.h"
 #include "robot_params.h"
 #include "servo.h"
-#ifndef HEXAPOD_HEADLESS
-#include "visual.h"
-#endif
 #include "wifi_controller.h"
 
 #include <algorithm>
@@ -30,14 +25,12 @@ namespace {
 
 constexpr double WifiRelayInactivityTimeout = 15.0;
 
-#ifdef HEXAPOD_HEADLESS
 volatile std::sig_atomic_t headless_shutdown_signal = 0;
 
 void handle_headless_shutdown_signal(int)
 {
     headless_shutdown_signal = 1;
 }
-#endif
 
 int wifi_position_from_control(const RobotControlState& control)
 {
@@ -74,11 +67,9 @@ int main(int argc, char** argv)
         return options.parse_error ? 1 : 0;
     }
 
-#ifdef HEXAPOD_HEADLESS
     std::signal(SIGINT, handle_headless_shutdown_signal);
     std::signal(SIGTERM, handle_headless_shutdown_signal);
-    std::printf("Headless mode: local raylib rendering and input disabled.\n");
-#endif
+    std::printf("Headless mode: local rendering and input disabled.\n");
 
     WifiControllerServer wifi_controller;
     if (wifi_controller.start(options.wifi_controller_port)) {
@@ -86,25 +77,6 @@ int main(int argc, char** argv)
     } else {
         std::fprintf(stderr, "Wi-Fi controller: %s\n", wifi_controller.status().c_str());
     }
-
-#ifndef HEXAPOD_HEADLESS
-    // ---- Window setup ------------------------------------------
-    const int SCR_W = config::ScreenWidth, SCR_H = config::ScreenHeight;
-    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
-    InitWindow(SCR_W, SCR_H,
-        "Hexapod Kinematic Simulator  |  Active input switching");
-    SetTargetFPS(60);
-
-    // ---- Camera (mirrors MATLAB view(ax,3): azimuth=-37.5, elev=30) --
-    constexpr float D2R = 3.14159265358979323846f / 180.0f;
-    float cam_azimuth   = config::CameraAzimuthDeg * D2R;
-    float cam_elevation = config::CameraElevationDeg * D2R;
-    float cam_distance  = config::CameraDistance;
-    Camera3D camera = {};
-    camera.up         = {0.0f, 1.0f, 0.0f};  // Y-up in raylib coords
-    camera.fovy       = config::CameraFovy;
-    camera.projection = CAMERA_PERSPECTIVE;
-#endif
 
     // ---- Robot initialisation ----------------------------------
     RobotParams params = get_robot_params();
@@ -131,7 +103,7 @@ int main(int argc, char** argv)
     RobotState robot_state;
     Vec3 feet_world[6];
 
-    // Pre-seed feet at default positions (mirrors keyboard.m init)
+    // Pre-seed feet at default positions.
     for (int i = 0; i < 6; i++)
         gait_state.feet_world[i] = params.default_foot_positions[i];
 
@@ -176,17 +148,14 @@ int main(int argc, char** argv)
         }
     };
 
-#ifdef HEXAPOD_HEADLESS
     using HeadlessClock = std::chrono::steady_clock;
     constexpr double TargetFrameSeconds = 1.0 / 60.0;
     const auto target_frame_duration =
         std::chrono::duration_cast<HeadlessClock::duration>(
             std::chrono::duration<double>(TargetFrameSeconds));
     auto last_frame_time = HeadlessClock::now() - target_frame_duration;
-#endif
 
     while (!shutdown_complete) {
-#ifdef HEXAPOD_HEADLESS
         if (headless_shutdown_signal != 0) {
             shutdown_requested = true;
         }
@@ -196,13 +165,6 @@ int main(int argc, char** argv)
             std::chrono::duration<double>(frame_start_time - last_frame_time).count(),
             0.05);
         last_frame_time = frame_start_time;
-#else
-        if (WindowShouldClose()) {
-            shutdown_requested = true;
-        }
-
-        double dt = std::min((double)GetFrameTime(), 0.05);  // cap at 50 ms
-#endif
         if (options.servo2040_enabled && servo2040.is_connected() && !voltage_critical) {
             if (servo2040.relay_enabled()) {
                 relay_active_time += dt;
@@ -250,36 +212,11 @@ int main(int argc, char** argv)
         InputState input = read_input_state();
         apply_wifi_controller_snapshot(input, wifi_controller.snapshot());
         control_input = update_control_input_source(input, control_input);
-#ifdef HEXAPOD_HEADLESS
-        bool keyboard_enabled = false;
-#else
-        bool keyboard_enabled = control_input.active_source == ControlInputSource::KEYBOARD;
-#endif
         bool wifi_enabled = control_input.active_source == ControlInputSource::WIFI;
 
-#ifndef HEXAPOD_HEADLESS
-        // ---- Mouse camera orbit --------------------------------
-        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-            Vector2 d = GetMouseDelta();
-            cam_azimuth   += d.x * 0.005f;
-            cam_elevation -= d.y * 0.005f;
-            cam_elevation  = std::clamp(cam_elevation,
-                                         config::CameraMinElevationDeg*D2R,
-                                         config::CameraMaxElevationDeg*D2R);
-        }
-        cam_distance -= GetMouseWheelMove() * 0.06f;
-        cam_distance  = std::clamp(cam_distance, config::CameraMinDistance, config::CameraMaxDistance);
-#endif
-
-        bool shift  = keyboard_enabled
-                   ? (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))
-                   : (wifi_enabled ? false : gamepad_down(input, GAMEPAD_BUTTON_LEFT_THUMB));
-        bool ctrl = keyboard_enabled
-                 ? (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL))
-                 : false;
         KeyStatus keys;
         RobotFrameState frame;
-        shutdown_complete = update_robot_control(options, dt, input, {keyboard_enabled, wifi_enabled, shift, ctrl},
+        shutdown_complete = update_robot_control(options, dt, input, {wifi_enabled},
                                                  params, control, gait_state, base_pose, final_pose,
                                                  robot_state, feet_world, keys, frame,
                                                  shutdown_requested);
@@ -344,62 +281,6 @@ int main(int argc, char** argv)
                                                 gait_state.is_swing, frame.render_state,
                                                 frame.render_pwm);
 
-#ifndef HEXAPOD_HEADLESS
-        // ---- Record foot-plant events for trail -----------------
-        if (!options.direct_pwm_control_enabled) {
-            record_footprints(feet_world, gait_state.is_swing, (float)dt);
-        }
-
-        // ---- Camera follow body --------------------------------
-        float tx = (float)final_pose.x, ty = (float)final_pose.y, tz = (float)final_pose.z;
-        Vector3 tgt = to_rl(tx, ty, tz);
-        camera.target = tgt;
-        camera.position = {
-            tgt.x + cam_distance * cosf(cam_elevation) * cosf(cam_azimuth),
-            tgt.y + cam_distance * sinf(cam_elevation),
-            tgt.z + cam_distance * cosf(cam_elevation) * sinf(cam_azimuth)
-        };
-
-        // ====================================================
-        //  Draw
-        // ====================================================
-        BeginDrawing();
-        Color background = {240, 242, 245, 255};
-        if (voltage_critical) {
-            background = {190, 35, 35, 255};
-        } else if (voltage_warning) {
-            double period = std::max(0.1, config::VoltageWarningPulseSeconds);
-            double phase = std::fmod(GetTime(), period) / period;
-            double pulse = std::max(0.0, std::cos(phase * 2.0 * M_PI));
-            pulse = pulse * pulse * pulse;
-            auto mix = [&](unsigned char a, unsigned char b) {
-                return (unsigned char)((double)a + ((double)b - (double)a) * pulse);
-            };
-            background = {mix(240, 245), mix(242, 210), mix(245, 40), 255};
-        }
-        ClearBackground(background);
-
-        BeginMode3D(camera);
-            draw_scene(params, final_pose, fk_pts, feet_world, gait_state.is_swing);
-        EndMode3D();
-
-        draw_hud({
-            SCR_W, SCR_H,
-            options, input, servo2040,
-            keyboard_enabled, wifi_enabled,
-            control.cmd, final_pose, frame.render_state, gait_state, frame.render_pwm,
-            control.gait_type, control.active_dance,
-            control.current_walk_speed, control.current_strafe_speed, control.current_spin_rate,
-            max_err, max_drag,
-            control.selected_pwm_leg, control.selected_pwm_joint,
-            ctrl, shift,
-            keys.kW, keys.kS, keys.kA, keys.kD, keys.kQ, keys.kE, keys.kR, keys.kF,
-            voltage_valid, servo_voltage, current_valid, servo_current,
-            voltage_warning, voltage_critical
-        });
-
-        EndDrawing();
-#else
         (void)max_err;
         (void)max_drag;
         (void)voltage_valid;
@@ -407,13 +288,10 @@ int main(int argc, char** argv)
         (void)servo_voltage;
         (void)servo_current;
         (void)voltage_warning;
+        (void)voltage_critical;
         std::this_thread::sleep_until(frame_start_time + target_frame_duration);
-#endif
     }
 
-#ifndef HEXAPOD_HEADLESS
-    CloseWindow();
-#endif
     wifi_controller.stop();
     return 0;
 }

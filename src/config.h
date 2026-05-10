@@ -12,18 +12,6 @@
 
 namespace config {
 
-// ---- Window / camera ------------------------------------------
-inline constexpr int ScreenWidth = 1280;
-inline constexpr int ScreenHeight = 800;
-inline constexpr float CameraAzimuthDeg = 45.0f;
-inline constexpr float CameraElevationDeg = 30.0f;
-inline constexpr float CameraMinElevationDeg = 5.0f;
-inline constexpr float CameraMaxElevationDeg = 85.0f;
-inline constexpr float CameraDistance = 0.85f;
-inline constexpr float CameraFovy = 55.0f;
-inline constexpr float CameraMinDistance = 0.30f;
-inline constexpr float CameraMaxDistance = 3.00f;
-
 // ---- Physical robot geometry (metres, degrees) ----------------
 inline constexpr double CoxaLength = 0.043;
 inline constexpr double FemurLength = 0.080;
