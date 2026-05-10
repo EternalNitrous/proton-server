@@ -136,12 +136,30 @@ raylib is fetched and built automatically — no manual install required.
 
 ## Build instructions
 
+### Raspberry Pi OS / Raspbian
+
+Use the installer script from the repo root. It installs apt dependencies,
+checks out the selected branch, builds, and enables a `hexapod-sim.service`
+startup service:
+
+```bash
+sh scripts/install_raspbian.sh headless --servo2040 /dev/ttyACM0
+```
+
+Use `headless` for Raspberry Pi OS Lite. Use `main` on Raspberry Pi OS Desktop
+when you want the local raylib window:
+
+```bash
+sh scripts/install_raspbian.sh main
+```
+
 ### Linux / macOS
 
 ```bash
 # Prerequisites: cmake, a C++ compiler, git
-# Ubuntu/Debian also needs: libx11-dev libxrandr-dev libxinerama-dev
-#                           libxcursor-dev libxi-dev libgl1-mesa-dev
+# Ubuntu/Debian also needs the raylib window/audio/input deps:
+# xorg-dev libasound2-dev mesa-common-dev libgl1-mesa-dev
+# libglu1-mesa-dev libudev-dev
 
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
