@@ -1,4 +1,15 @@
-# Hexapod Kinematic Simulator
+<div align="center" style="display: flex; justify-content: center; align-items: center; gap: 16px;">
+  <img src="assets/fullpreview.png" height="125" />
+</div>
+
+<div align="center">
+  <img src="https://img.shields.io/github/issues/EternalNitrous/proton-server?style=flat&color=5863F6" />
+  <img src="https://img.shields.io/github/stars/EternalNitrous/proton-server?style=flat&color=5863F6" />
+</div>
+
+
+
+# Proton Server
 
 Interactive hexapod simulation and control runtime with keyboard/gamepad input,
 Wi-Fi control, Servo2040 serial output, gait generation, IK/FK, and telemetry
