@@ -12,6 +12,7 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <csignal>
 #include <optional>
 #include <sstream>
@@ -243,6 +244,226 @@ bool control_active(const WifiControllerSnapshot& snapshot)
         || snapshot.position_control_active
         || snapshot.gait_control_active
         || snapshot.relay_control_active;
+}
+
+struct WifiNetworkInfo {
+    std::string ssid;
+    int signal = 0;
+    bool active = false;
+    bool saved = false;
+};
+
+std::string shell_quote(const std::string& value)
+{
+    std::string quoted = "'";
+    for (char ch : value) {
+        if (ch == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted.push_back(ch);
+        }
+    }
+    quoted.push_back('\'');
+    return quoted;
+}
+
+std::string json_escape(const std::string& value)
+{
+    std::string escaped;
+    escaped.reserve(value.size());
+    for (char ch : value) {
+        switch (ch) {
+            case '\\': escaped += "\\\\"; break;
+            case '"': escaped += "\\\""; break;
+            case '\n': escaped += "\\n"; break;
+            case '\r': escaped += "\\r"; break;
+            case '\t': escaped += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(ch) < 0x20) {
+                    escaped += ' ';
+                } else {
+                    escaped.push_back(ch);
+                }
+                break;
+        }
+    }
+    return escaped;
+}
+
+std::string run_command(const std::string& command)
+{
+#ifdef _WIN32
+    (void)command;
+    return "";
+#else
+    std::string output;
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) return output;
+
+    char buffer[512] = {};
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        output += buffer;
+    }
+    pclose(pipe);
+    return output;
+#endif
+}
+
+bool command_succeeds(const std::string& command)
+{
+#ifdef _WIN32
+    (void)command;
+    return false;
+#else
+    return std::system(command.c_str()) == 0;
+#endif
+}
+
+std::vector<std::string> split_lines(const std::string& text)
+{
+    std::vector<std::string> lines;
+    std::istringstream input(text);
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (!line.empty()) lines.push_back(line);
+    }
+    return lines;
+}
+
+std::vector<std::string> split_nmcli_fields(const std::string& line)
+{
+    std::vector<std::string> fields;
+    std::string field;
+    bool escaped = false;
+    for (char ch : line) {
+        if (escaped) {
+            field.push_back(ch);
+            escaped = false;
+        } else if (ch == '\\') {
+            escaped = true;
+        } else if (ch == ':') {
+            fields.push_back(field);
+            field.clear();
+        } else {
+            field.push_back(ch);
+        }
+    }
+    fields.push_back(field);
+    return fields;
+}
+
+bool nmcli_available()
+{
+#ifdef _WIN32
+    return false;
+#else
+    return command_succeeds("command -v nmcli >/dev/null 2>&1");
+#endif
+}
+
+bool hotspot_configured()
+{
+#ifdef _WIN32
+    return false;
+#else
+    return access("/etc/proton-server/hotspot-enabled", F_OK) == 0;
+#endif
+}
+
+std::vector<WifiNetworkInfo> wifi_networks()
+{
+    std::map<std::string, WifiNetworkInfo> by_ssid;
+    if (!hotspot_configured() || !nmcli_available()) return {};
+
+    for (const std::string& line : split_lines(run_command("nmcli -t -f NAME,TYPE connection show 2>/dev/null"))) {
+        const auto fields = split_nmcli_fields(line);
+        if (fields.size() < 2 || fields[1] != "802-11-wireless" || fields[0].empty()) continue;
+        WifiNetworkInfo& network = by_ssid[fields[0]];
+        network.ssid = fields[0];
+        network.saved = true;
+    }
+
+    for (const std::string& line : split_lines(run_command("nmcli -t -f ACTIVE,SSID,SIGNAL dev wifi list --rescan no 2>/dev/null"))) {
+        const auto fields = split_nmcli_fields(line);
+        if (fields.size() < 3 || fields[1].empty()) continue;
+        WifiNetworkInfo& network = by_ssid[fields[1]];
+        network.ssid = fields[1];
+        network.active = fields[0] == "yes";
+        try {
+            network.signal = std::max(network.signal, std::stoi(fields[2]));
+        } catch (...) {
+        }
+    }
+
+    std::vector<WifiNetworkInfo> networks;
+    for (const auto& entry : by_ssid) {
+        networks.push_back(entry.second);
+    }
+    std::sort(networks.begin(), networks.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.active != rhs.active) return lhs.active > rhs.active;
+        if (lhs.saved != rhs.saved) return lhs.saved > rhs.saved;
+        if (lhs.signal != rhs.signal) return lhs.signal > rhs.signal;
+        return lhs.ssid < rhs.ssid;
+    });
+    return networks;
+}
+
+std::string active_wifi_ssid(const std::vector<WifiNetworkInfo>& networks)
+{
+    for (const WifiNetworkInfo& network : networks) {
+        if (network.active) return network.ssid;
+    }
+    return "";
+}
+
+std::string wifi_status_json()
+{
+    const bool available = hotspot_configured() && nmcli_available();
+    const std::vector<WifiNetworkInfo> networks = available ? wifi_networks()
+                                                            : std::vector<WifiNetworkInfo>{};
+    const std::string active_ssid = active_wifi_ssid(networks);
+
+    std::ostringstream body;
+    body << "{"
+         << "\"available\":" << (available ? "true" : "false") << ","
+         << "\"hotspot_ssid\":\"Proton Server\","
+         << "\"current_ssid\":\"" << json_escape(active_ssid) << "\","
+         << "\"forwarded_ssid\":\"" << json_escape(active_ssid) << "\","
+         << "\"networks\":[";
+    for (std::size_t i = 0; i < networks.size(); i++) {
+        const WifiNetworkInfo& network = networks[i];
+        if (i > 0) body << ",";
+        body << "{"
+             << "\"ssid\":\"" << json_escape(network.ssid) << "\","
+             << "\"signal\":" << network.signal << ","
+             << "\"active\":" << (network.active ? "true" : "false") << ","
+             << "\"saved\":" << (network.saved ? "true" : "false")
+             << "}";
+    }
+    body << "]}";
+    return body.str();
+}
+
+bool set_forwarded_wifi(const std::string& ssid)
+{
+    if (!hotspot_configured() || !nmcli_available()) return false;
+    if (ssid.empty()) {
+        return command_succeeds("nmcli device disconnect wlan0 >/dev/null 2>&1 || true");
+    }
+
+    const std::string quoted_ssid = shell_quote(ssid);
+    if (command_succeeds("nmcli --wait 20 connection up id " + quoted_ssid + " >/dev/null 2>&1")) {
+        return true;
+    }
+    return command_succeeds("nmcli --wait 30 device wifi connect " + quoted_ssid + " >/dev/null 2>&1");
+}
+
+std::string request_body(const std::string& request)
+{
+    const auto body_start = request.find("\r\n\r\n");
+    if (body_start == std::string::npos) return "";
+    return request.substr(body_start + 4);
 }
 
 double seconds_since(Clock::time_point time)
@@ -1071,6 +1292,14 @@ void WifiControllerServer::handle_client(WifiSocket client)
         return;
     } else if (request.rfind("GET /visualizer.json", 0) == 0) {
         send_all(client, http_response(visualizer_json(), "application/json"));
+    } else if (request.rfind("GET /wifi.json", 0) == 0) {
+        send_all(client, http_response(wifi_status_json(), "application/json"));
+    } else if (request.rfind("POST /wifi.json", 0) == 0) {
+        const auto ssid = string_after_key(request_body(request), "\"ssid\"");
+        const bool ok = ssid && set_forwarded_wifi(*ssid);
+        send_all(client, http_response(ok ? wifi_status_json()
+                                           : "{\"ok\":false,\"error\":\"Wi-Fi connection failed\"}",
+                                       "application/json"));
     } else if (request.rfind("GET /control.json", 0) == 0
                || request.rfind("GET /status.json", 0) == 0) {
         send_all(client, http_response(snapshot_json(snapshot()), "application/json"));
