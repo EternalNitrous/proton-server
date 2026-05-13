@@ -302,7 +302,7 @@ ControlInputState update_control_input_source(const InputState& input,
     ControlInputState next = previous;
     next.keyboard_requested = keyboard_control_requested();
     next.controller_requested = controller_control_requested(input);
-    next.wifi_requested = input.wifi_active;
+    next.wifi_requested = input.wifi_connected || input.wifi_active;
 
     const bool keyboard_started = next.keyboard_requested && !previous.keyboard_requested;
     const bool controller_started = next.controller_requested && !previous.controller_requested;

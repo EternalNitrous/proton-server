@@ -1210,7 +1210,6 @@ bool WifiControllerServer::update_coordinates(const std::string& body)
         if (!relay_request) relay_request = relay_status_camel;
         if (!relay_request) relay_request = relay_status_space;
         if (!relay_request) relay_request = relay;
-        const bool relay_off_requested = relay_request && !*relay_request;
         if (relay_request) {
             if (*relay_request) {
                 state_.target_relay_status = true;
@@ -1276,13 +1275,6 @@ bool WifiControllerServer::update_coordinates(const std::string& body)
             || (secondary
                 && (height_axis_value(state_.secondary_x_action, secondary->x)
                     || height_axis_value(state_.secondary_y_action, secondary->y)));
-        if (height_axis_requested && !relay_off_requested && !state_.target_relay_status) {
-            state_.target_relay_status = true;
-            state_.relay_control_active = true;
-            state_.relay_switch_ready = true;
-            state_.relay_restore_default_height = false;
-            changed = true;
-        }
         if (height_axis_requested && !directional_control_enabled) {
             state_.primary = {};
             state_.secondary = {};
@@ -1306,12 +1298,6 @@ bool WifiControllerServer::update_coordinates(const std::string& body)
             state_.target_height = state_.user_target_height;
             state_.height_control_active = true;
             state_.height_control_gentle = false;
-            if (!relay_off_requested && !state_.target_relay_status) {
-                state_.target_relay_status = true;
-                state_.relay_control_active = true;
-                state_.relay_switch_ready = true;
-                state_.relay_restore_default_height = false;
-            }
             changed = true;
         }
         std::optional<double> body_radius_request = body_radius;
