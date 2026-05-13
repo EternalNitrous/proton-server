@@ -12,7 +12,8 @@ usage() {
 Usage: $0 [main|headless] [options]
 
 Installs Raspberry Pi OS / Raspbian dependencies, checks out the requested
-branch, builds the simulator, and enables it at startup with systemd.
+branch, builds the simulator, creates the Proton Server hotspot, and enables
+it at startup with systemd.
 
 Options:
   --servo2040 PORT|auto         Pass a Servo2040 serial port or force autodiscovery.
@@ -116,7 +117,7 @@ id "$SERVICE_USER" >/dev/null 2>&1 || die "service user does not exist: $SERVICE
 
 echo "Installing build dependencies..."
 $SUDO apt-get update
-PACKAGES="ca-certificates git build-essential cmake pkg-config"
+PACKAGES="ca-certificates git build-essential cmake pkg-config hostapd dnsmasq iptables iw wireless-tools network-manager"
 if [ "$BRANCH" = "main" ]; then
     PACKAGES="$PACKAGES xorg-dev libasound2-dev mesa-common-dev libgl1-mesa-dev libglu1-mesa-dev libudev-dev"
 fi
@@ -136,6 +137,86 @@ for group in dialout input video render; do
         $SUDO usermod -a -G "$group" "$SERVICE_USER"
     fi
 done
+
+HOTSPOT_RUNNER="/usr/local/sbin/proton-hotspot-run"
+HOTSPOT_SERVICE="/etc/systemd/system/proton-hotspot.service"
+HOSTAPD_CONF="/etc/hostapd/proton-server.conf"
+DNSMASQ_CONF="/etc/dnsmasq.d/proton-server.conf"
+HOTSPOT_MARKER="/etc/proton-server/hotspot-enabled"
+
+echo "Writing Proton Server hotspot configuration..."
+$SUDO mkdir -p /etc/hostapd /etc/dnsmasq.d /etc/proton-server /usr/local/sbin
+{
+    echo "interface=uap0"
+    echo "driver=nl80211"
+    echo "ssid=Proton Server"
+    echo "hw_mode=g"
+    echo "channel=7"
+    echo "wmm_enabled=1"
+    echo "auth_algs=1"
+    echo "ignore_broadcast_ssid=0"
+} | $SUDO tee "$HOSTAPD_CONF" >/dev/null
+
+{
+    echo "interface=uap0"
+    echo "bind-interfaces"
+    echo "domain-needed"
+    echo "bogus-priv"
+    echo "dhcp-range=10.42.0.10,10.42.0.200,255.255.255.0,12h"
+    echo "dhcp-option=3,10.42.0.1"
+    echo "dhcp-option=6,1.1.1.1,8.8.8.8"
+} | $SUDO tee "$DNSMASQ_CONF" >/dev/null
+
+{
+    echo "#!/bin/sh"
+    echo "set -eu"
+    echo
+    echo "AP_IFACE=uap0"
+    echo "UPSTREAM_IFACE=wlan0"
+    echo "DNSMASQ_PID=/run/proton-dnsmasq.pid"
+    echo
+    echo "cleanup() {"
+    echo "    if [ -f \"\$DNSMASQ_PID\" ]; then"
+    echo "        kill \"\$(cat \"\$DNSMASQ_PID\")\" >/dev/null 2>&1 || true"
+    echo "        rm -f \"\$DNSMASQ_PID\""
+    echo "    fi"
+    echo "    iptables -t nat -D POSTROUTING -o \"\$UPSTREAM_IFACE\" -j MASQUERADE >/dev/null 2>&1 || true"
+    echo "    iptables -D FORWARD -i \"\$AP_IFACE\" -o \"\$UPSTREAM_IFACE\" -j ACCEPT >/dev/null 2>&1 || true"
+    echo "    iptables -D FORWARD -i \"\$UPSTREAM_IFACE\" -o \"\$AP_IFACE\" -m state --state RELATED,ESTABLISHED -j ACCEPT >/dev/null 2>&1 || true"
+    echo "    ip link set \"\$AP_IFACE\" down >/dev/null 2>&1 || true"
+    echo "    iw dev \"\$AP_IFACE\" del >/dev/null 2>&1 || true"
+    echo "}"
+    echo
+    echo "trap cleanup EXIT INT TERM"
+    echo "cleanup"
+    echo "iw dev \"\$UPSTREAM_IFACE\" interface add \"\$AP_IFACE\" type __ap"
+    echo "ip addr add 10.42.0.1/24 dev \"\$AP_IFACE\""
+    echo "ip link set \"\$AP_IFACE\" up"
+    echo "sysctl -w net.ipv4.ip_forward=1 >/dev/null"
+    echo "iptables -t nat -C POSTROUTING -o \"\$UPSTREAM_IFACE\" -j MASQUERADE >/dev/null 2>&1 || iptables -t nat -A POSTROUTING -o \"\$UPSTREAM_IFACE\" -j MASQUERADE"
+    echo "iptables -C FORWARD -i \"\$AP_IFACE\" -o \"\$UPSTREAM_IFACE\" -j ACCEPT >/dev/null 2>&1 || iptables -A FORWARD -i \"\$AP_IFACE\" -o \"\$UPSTREAM_IFACE\" -j ACCEPT"
+    echo "iptables -C FORWARD -i \"\$UPSTREAM_IFACE\" -o \"\$AP_IFACE\" -m state --state RELATED,ESTABLISHED -j ACCEPT >/dev/null 2>&1 || iptables -A FORWARD -i \"\$UPSTREAM_IFACE\" -o \"\$AP_IFACE\" -m state --state RELATED,ESTABLISHED -j ACCEPT"
+    echo "dnsmasq --conf-file=$DNSMASQ_CONF --pid-file=\"\$DNSMASQ_PID\""
+    echo "exec hostapd $HOSTAPD_CONF"
+} | $SUDO tee "$HOTSPOT_RUNNER" >/dev/null
+$SUDO chmod 755 "$HOTSPOT_RUNNER"
+
+{
+    echo "[Unit]"
+    echo "Description=Proton Server Wi-Fi hotspot"
+    echo "After=network.target"
+    echo "Wants=network.target"
+    echo
+    echo "[Service]"
+    echo "Type=simple"
+    echo "ExecStart=$HOTSPOT_RUNNER"
+    echo "Restart=on-failure"
+    echo "RestartSec=3"
+    echo
+    echo "[Install]"
+    echo "WantedBy=multi-user.target"
+} | $SUDO tee "$HOTSPOT_SERVICE" >/dev/null
+$SUDO touch "$HOTSPOT_MARKER"
 
 echo "Building $BRANCH in $BUILD_DIR..."
 run_repo cmake -S "$REPO_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
@@ -170,9 +251,13 @@ echo "Writing $SERVICE_FILE..."
 } | $SUDO tee "$SERVICE_FILE" >/dev/null
 
 $SUDO systemctl daemon-reload
+$SUDO systemctl unmask hostapd >/dev/null 2>&1 || true
+$SUDO systemctl disable --now dnsmasq >/dev/null 2>&1 || true
+$SUDO systemctl enable proton-hotspot.service
 $SUDO systemctl enable "$SERVICE_NAME.service"
 
 if [ "$START_SERVICE" -eq 1 ]; then
+    $SUDO systemctl restart proton-hotspot.service
     $SUDO systemctl restart "$SERVICE_NAME.service"
 fi
 
@@ -182,9 +267,11 @@ echo "  $EXECUTABLE"
 echo
 echo "Startup service:"
 echo "  $SERVICE_NAME.service"
+echo "  proton-hotspot.service (SSID: Proton Server)"
 echo
 echo "Useful commands:"
 echo "  sudo systemctl status $SERVICE_NAME.service"
+echo "  sudo systemctl status proton-hotspot.service"
 echo "  sudo journalctl -u $SERVICE_NAME.service -f"
 if [ "$BRANCH" = "main" ]; then
     echo
