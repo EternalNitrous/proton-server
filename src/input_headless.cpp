@@ -46,7 +46,7 @@ ControlInputState update_control_input_source(const InputState& input,
                                               ControlInputState previous)
 {
     ControlInputState next = previous;
-    next.wifi_requested = input.wifi_active;
+    next.wifi_requested = input.wifi_connected || input.wifi_active;
 
     if (next.wifi_requested) {
         next.active_source = ControlInputSource::WIFI;
