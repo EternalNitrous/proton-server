@@ -3,8 +3,8 @@
 </div>
 
 <div align="center">
-  <img src="https://img.shields.io/github/issues/EternalNitrous/proton-server?style=flat&color=5863F6" />
-  <img src="https://img.shields.io/github/stars/EternalNitrous/proton-server?style=flat&color=5863F6" />
+  <img src="https://img.shields.io/github/issues/EternalNitrous/proton-server?style=flat&color=2c2c2c" />
+  <img src="https://img.shields.io/github/stars/EternalNitrous/proton-server?style=flat&color=2c2c2c" />
 </div>
 
 
