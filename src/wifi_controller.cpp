@@ -12,7 +12,6 @@
 #include <cstring>
 #include <cmath>
 #include <limits>
-#include <map>
 #include <csignal>
 #include <optional>
 #include <sstream>
@@ -49,6 +48,10 @@ constexpr double HEIGHT_MAX = 0.14;
 constexpr double BODY_RADIUS_MIN = 0.10;
 constexpr double STEP_HEIGHT_MIN = 0.02;
 constexpr double STEP_HEIGHT_MAX = 0.12;
+constexpr double RAD_TO_DEG = 180.0 / 3.14159265358979323846;
+#ifndef _WIN32
+constexpr const char* POWER_CONTROL_MARKER_PATH = "/etc/proton-server/power-control-enabled";
+#endif
 
 using Clock = std::chrono::steady_clock;
 
@@ -246,27 +249,6 @@ bool control_active(const WifiControllerSnapshot& snapshot)
         || snapshot.relay_control_active;
 }
 
-struct WifiNetworkInfo {
-    std::string ssid;
-    int signal = 0;
-    bool active = false;
-    bool saved = false;
-};
-
-std::string shell_quote(const std::string& value)
-{
-    std::string quoted = "'";
-    for (char ch : value) {
-        if (ch == '\'') {
-            quoted += "'\\''";
-        } else {
-            quoted.push_back(ch);
-        }
-    }
-    quoted.push_back('\'');
-    return quoted;
-}
-
 std::string json_escape(const std::string& value)
 {
     std::string escaped;
@@ -288,182 +270,6 @@ std::string json_escape(const std::string& value)
         }
     }
     return escaped;
-}
-
-std::string run_command(const std::string& command)
-{
-#ifdef _WIN32
-    (void)command;
-    return "";
-#else
-    std::string output;
-    FILE* pipe = popen(command.c_str(), "r");
-    if (!pipe) return output;
-
-    char buffer[512] = {};
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        output += buffer;
-    }
-    pclose(pipe);
-    return output;
-#endif
-}
-
-bool command_succeeds(const std::string& command)
-{
-#ifdef _WIN32
-    (void)command;
-    return false;
-#else
-    return std::system(command.c_str()) == 0;
-#endif
-}
-
-std::vector<std::string> split_lines(const std::string& text)
-{
-    std::vector<std::string> lines;
-    std::istringstream input(text);
-    std::string line;
-    while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (!line.empty()) lines.push_back(line);
-    }
-    return lines;
-}
-
-std::vector<std::string> split_nmcli_fields(const std::string& line)
-{
-    std::vector<std::string> fields;
-    std::string field;
-    bool escaped = false;
-    for (char ch : line) {
-        if (escaped) {
-            field.push_back(ch);
-            escaped = false;
-        } else if (ch == '\\') {
-            escaped = true;
-        } else if (ch == ':') {
-            fields.push_back(field);
-            field.clear();
-        } else {
-            field.push_back(ch);
-        }
-    }
-    fields.push_back(field);
-    return fields;
-}
-
-bool nmcli_available()
-{
-#ifdef _WIN32
-    return false;
-#else
-    return command_succeeds("command -v nmcli >/dev/null 2>&1");
-#endif
-}
-
-bool hotspot_configured()
-{
-#ifdef _WIN32
-    return false;
-#else
-    return access("/etc/proton-server/hotspot-enabled", F_OK) == 0;
-#endif
-}
-
-std::vector<WifiNetworkInfo> wifi_networks()
-{
-    std::map<std::string, WifiNetworkInfo> by_ssid;
-    if (!hotspot_configured() || !nmcli_available()) return {};
-
-    for (const std::string& line : split_lines(run_command("nmcli -t -f NAME,TYPE connection show 2>/dev/null"))) {
-        const auto fields = split_nmcli_fields(line);
-        if (fields.size() < 2 || fields[1] != "802-11-wireless" || fields[0].empty()) continue;
-        WifiNetworkInfo& network = by_ssid[fields[0]];
-        network.ssid = fields[0];
-        network.saved = true;
-    }
-
-    for (const std::string& line : split_lines(run_command("nmcli -t -f ACTIVE,SSID,SIGNAL dev wifi list --rescan no 2>/dev/null"))) {
-        const auto fields = split_nmcli_fields(line);
-        if (fields.size() < 3 || fields[1].empty()) continue;
-        WifiNetworkInfo& network = by_ssid[fields[1]];
-        network.ssid = fields[1];
-        network.active = fields[0] == "yes";
-        try {
-            network.signal = std::max(network.signal, std::stoi(fields[2]));
-        } catch (...) {
-        }
-    }
-
-    std::vector<WifiNetworkInfo> networks;
-    for (const auto& entry : by_ssid) {
-        networks.push_back(entry.second);
-    }
-    std::sort(networks.begin(), networks.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.active != rhs.active) return lhs.active > rhs.active;
-        if (lhs.saved != rhs.saved) return lhs.saved > rhs.saved;
-        if (lhs.signal != rhs.signal) return lhs.signal > rhs.signal;
-        return lhs.ssid < rhs.ssid;
-    });
-    return networks;
-}
-
-std::string active_wifi_ssid(const std::vector<WifiNetworkInfo>& networks)
-{
-    for (const WifiNetworkInfo& network : networks) {
-        if (network.active) return network.ssid;
-    }
-    return "";
-}
-
-std::string wifi_status_json()
-{
-    const bool available = hotspot_configured() && nmcli_available();
-    const std::vector<WifiNetworkInfo> networks = available ? wifi_networks()
-                                                            : std::vector<WifiNetworkInfo>{};
-    const std::string active_ssid = active_wifi_ssid(networks);
-
-    std::ostringstream body;
-    body << "{"
-         << "\"available\":" << (available ? "true" : "false") << ","
-         << "\"hotspot_ssid\":\"Proton Server\","
-         << "\"current_ssid\":\"" << json_escape(active_ssid) << "\","
-         << "\"forwarded_ssid\":\"" << json_escape(active_ssid) << "\","
-         << "\"networks\":[";
-    for (std::size_t i = 0; i < networks.size(); i++) {
-        const WifiNetworkInfo& network = networks[i];
-        if (i > 0) body << ",";
-        body << "{"
-             << "\"ssid\":\"" << json_escape(network.ssid) << "\","
-             << "\"signal\":" << network.signal << ","
-             << "\"active\":" << (network.active ? "true" : "false") << ","
-             << "\"saved\":" << (network.saved ? "true" : "false")
-             << "}";
-    }
-    body << "]}";
-    return body.str();
-}
-
-bool set_forwarded_wifi(const std::string& ssid)
-{
-    if (!hotspot_configured() || !nmcli_available()) return false;
-    if (ssid.empty()) {
-        return command_succeeds("nmcli device disconnect wlan0 >/dev/null 2>&1 || true");
-    }
-
-    const std::string quoted_ssid = shell_quote(ssid);
-    if (command_succeeds("nmcli --wait 20 connection up id " + quoted_ssid + " >/dev/null 2>&1")) {
-        return true;
-    }
-    return command_succeeds("nmcli --wait 30 device wifi connect " + quoted_ssid + " >/dev/null 2>&1");
-}
-
-std::string request_body(const std::string& request)
-{
-    const auto body_start = request.find("\r\n\r\n");
-    if (body_start == std::string::npos) return "";
-    return request.substr(body_start + 4);
 }
 
 double seconds_since(Clock::time_point time)
@@ -589,6 +395,21 @@ std::string http_response(const std::string& body, const std::string& content_ty
     return out.str();
 }
 
+std::string http_error_response(int status_code,
+                                const std::string& reason,
+                                const std::string& body)
+{
+    std::ostringstream out;
+    out << "HTTP/1.1 " << status_code << " " << reason << "\r\n"
+        << "Content-Type: application/json\r\n"
+        << "Content-Length: " << body.size() << "\r\n"
+        << "Access-Control-Allow-Origin: *\r\n"
+        << "Access-Control-Allow-Headers: Content-Type\r\n"
+        << "Connection: close\r\n\r\n"
+        << body;
+    return out.str();
+}
+
 std::string no_content_response()
 {
     return "HTTP/1.1 204 No Content\r\n"
@@ -604,6 +425,34 @@ std::string not_found_response()
            "Content-Length: 10\r\n"
            "Connection: close\r\n\r\n"
            "Not found\n";
+}
+
+bool power_control_enabled()
+{
+#ifdef _WIN32
+    return false;
+#else
+    return access(POWER_CONTROL_MARKER_PATH, F_OK) == 0;
+#endif
+}
+
+bool run_power_command(const std::string& action)
+{
+#ifdef _WIN32
+    (void)action;
+    return false;
+#else
+    const char* command = nullptr;
+    if (action == "shutdown") {
+        command = "/usr/bin/sudo -n /usr/sbin/shutdown -h now";
+    } else if (action == "restart") {
+        command = "/usr/bin/sudo -n /usr/sbin/reboot";
+    } else {
+        return false;
+    }
+
+    return std::system(command) == 0;
+#endif
 }
 
 bool send_all(WifiSocket client, const std::string& data)
@@ -867,6 +716,25 @@ void append_vec3_json(std::ostringstream& body, const Vec3& point)
     body << "[" << point.x << "," << point.y << "," << point.z << "]";
 }
 
+std::string fixed_value(double value, int precision)
+{
+    std::ostringstream body;
+    body.setf(std::ios::fixed);
+    body.precision(precision);
+    body << value;
+    return body.str();
+}
+
+void append_json_string_array(std::ostringstream& body, const std::vector<std::string>& lines)
+{
+    body << "[";
+    for (std::size_t i = 0; i < lines.size(); i++) {
+        if (i > 0) body << ",";
+        body << "\"" << json_escape(lines[i]) << "\"";
+    }
+    body << "]";
+}
+
 std::string visualizer_snapshot_json(const VisualizerSnapshot& snapshot)
 {
     std::ostringstream body;
@@ -913,6 +781,103 @@ std::string visualizer_snapshot_json(const VisualizerSnapshot& snapshot)
         body << "]";
     }
 
+    body << "}";
+    return body.str();
+}
+
+std::string logs_snapshot_json(const WifiControllerSnapshot& state,
+                               const VisualizerSnapshot& visualizer,
+                               const std::string& server_status)
+{
+    std::vector<std::string> hud_lines;
+    std::vector<std::string> terminal_lines;
+
+    hud_lines.push_back(std::string("Input   : Wi-Fi :") + std::to_string(state.port)
+                        + (state.client_connected ? " connected" : " waiting"));
+    hud_lines.push_back("Height  : " + fixed_value(state.height, 3) + " m");
+    hud_lines.push_back("Body rad: " + fixed_value(state.body_radius, 3) + " m");
+    hud_lines.push_back("Step hgt: " + fixed_value(state.step_height, 3) + " m");
+    hud_lines.push_back("Speed   : " + fixed_value(state.speed, 3) + " m/s");
+    hud_lines.push_back("Relay   : " + std::string(state.relay_status ? "on" : "off"));
+    hud_lines.push_back("Position: " + std::string(state.position == 1 ? "standing" : "sitting"));
+    hud_lines.push_back("Gait    : " + std::to_string(state.gait));
+    hud_lines.push_back("Voltage : " + (state.voltage > 0.0 ? fixed_value(state.voltage, 2) + " V" : "--"));
+    hud_lines.push_back("Current : " + (state.current > 0.0 ? fixed_value(state.current, 2) + " A" : "--"));
+
+    if (visualizer.available) {
+        hud_lines.push_back("Yaw     : " + fixed_value(visualizer.pose.yaw * RAD_TO_DEG, 1) + " deg");
+        hud_lines.push_back("--- IK angles (deg, tibia ext) ---");
+        constexpr const char* leg_names[6] = {"R1", "R2", "R3", "L1", "L2", "L3"};
+        for (int i = 0; i < 6; i++) {
+            const LegJoints& joints = visualizer.legs[i].joints;
+            std::ostringstream line;
+            line.setf(std::ios::fixed);
+            line.precision(1);
+            line << leg_names[i]
+                 << "  cx=" << joints.coxa * RAD_TO_DEG
+                 << "  fm=" << joints.femur * RAD_TO_DEG
+                 << "  tb=" << -joints.tibia * RAD_TO_DEG
+                 << (visualizer.legs[i].swing ? " ^" : "  ");
+            hud_lines.push_back(line.str());
+        }
+
+        hud_lines.push_back("--- Servo angles (deg) ---");
+        for (int i = 0; i < 6; i++) {
+            ServoAngles servo = to_servo_angles(i, visualizer.legs[i].joints);
+            std::ostringstream line;
+            line.setf(std::ios::fixed);
+            line.precision(1);
+            line << leg_names[i]
+                 << "  cx=" << servo.coxa
+                 << "  fm=" << servo.femur
+                 << "  tb=" << servo.tibia;
+            hud_lines.push_back(line.str());
+        }
+
+        hud_lines.push_back("--- PWM values ---");
+        for (int i = 0; i < 6; i++) {
+            const PWMValues& pwm = visualizer.legs[i].pwm;
+            std::ostringstream line;
+            line << leg_names[i]
+                 << "  cx=" << pwm.coxa
+                 << "  fm=" << pwm.femur
+                 << "  tb=" << pwm.tibia;
+            hud_lines.push_back(line.str());
+        }
+    } else {
+        hud_lines.push_back("HUD frame unavailable");
+        hud_lines.push_back("Angle data unavailable until the first robot frame is produced");
+    }
+
+    terminal_lines.push_back("proton-server: " + server_status);
+    terminal_lines.push_back("control clients: " + std::string(state.client_connected ? "connected" : "none"));
+    terminal_lines.push_back("updates: " + std::to_string(state.update_count));
+    if (!visualizer.available) {
+        terminal_lines.push_back("WARNING: HUD/angle frame is not available; showing control status only");
+    }
+    if (state.voltage > 0.0 && state.voltage < config::Servo2040VoltageCritical) {
+        terminal_lines.push_back("ERROR: servo voltage is below critical threshold ("
+                                 + fixed_value(state.voltage, 2) + " V)");
+    } else if (state.voltage > 0.0 && state.voltage < config::Servo2040VoltageWarn) {
+        terminal_lines.push_back("WARNING: servo voltage is below warning threshold ("
+                                 + fixed_value(state.voltage, 2) + " V)");
+    }
+    if (state.relay_control_active) {
+        terminal_lines.push_back("relay request pending: "
+                                 + std::string(state.target_relay_status ? "on" : "off"));
+    }
+    if (state.position_control_active) {
+        terminal_lines.push_back("position request pending: "
+                                 + std::to_string(state.target_position));
+    }
+
+    std::ostringstream body;
+    body << "{"
+         << "\"ok\":true,"
+         << "\"hud\":";
+    append_json_string_array(body, hud_lines);
+    body << ",\"terminal\":";
+    append_json_string_array(body, terminal_lines);
     body << "}";
     return body.str();
 }
@@ -1235,6 +1200,35 @@ std::string WifiControllerServer::visualizer_json() const
     return visualizer_snapshot_json(visualizer_);
 }
 
+std::string WifiControllerServer::logs_json() const
+{
+    WifiControllerSnapshot state_snapshot;
+    VisualizerSnapshot visualizer_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        state_snapshot = state_;
+        state_snapshot.seconds_since_update = seconds_since(last_update_time_);
+        const bool websocket_connected = websocket_clients_.load() > 0;
+        state_snapshot.client_connected = websocket_connected
+            || state_snapshot.seconds_since_update <= CONNECTED_TIMEOUT_SECONDS;
+        const bool recent_control = state_snapshot.client_connected
+            && state_snapshot.seconds_since_update <= ACTIVE_TIMEOUT_SECONDS;
+        state_snapshot.active = control_active(state_snapshot)
+            && (websocket_connected
+                || recent_control
+                || state_snapshot.height_control_active
+                || state_snapshot.position_control_active
+                || state_snapshot.gait_control_active
+                || state_snapshot.relay_control_active);
+    }
+    {
+        std::lock_guard<std::mutex> lock(visualizer_mutex_);
+        visualizer_snapshot = visualizer_;
+    }
+
+    return logs_snapshot_json(state_snapshot, visualizer_snapshot, status_);
+}
+
 void WifiControllerServer::serve_loop()
 {
     while (running_) {
@@ -1292,14 +1286,12 @@ void WifiControllerServer::handle_client(WifiSocket client)
         return;
     } else if (request.rfind("GET /visualizer.json", 0) == 0) {
         send_all(client, http_response(visualizer_json(), "application/json"));
-    } else if (request.rfind("GET /wifi.json", 0) == 0) {
-        send_all(client, http_response(wifi_status_json(), "application/json"));
-    } else if (request.rfind("POST /wifi.json", 0) == 0) {
-        const auto ssid = string_after_key(request_body(request), "\"ssid\"");
-        const bool ok = ssid && set_forwarded_wifi(*ssid);
-        send_all(client, http_response(ok ? wifi_status_json()
-                                           : "{\"ok\":false,\"error\":\"Wi-Fi connection failed\"}",
-                                       "application/json"));
+    } else if (request.rfind("GET /logs.json", 0) == 0) {
+        send_all(client, http_response(logs_json(), "application/json"));
+    } else if (request.rfind("POST /system/shutdown", 0) == 0) {
+        send_all(client, handle_system_power_request("shutdown"));
+    } else if (request.rfind("POST /system/restart", 0) == 0) {
+        send_all(client, handle_system_power_request("restart"));
     } else if (request.rfind("GET /control.json", 0) == 0
                || request.rfind("GET /status.json", 0) == 0) {
         send_all(client, http_response(snapshot_json(snapshot()), "application/json"));
@@ -1310,6 +1302,27 @@ void WifiControllerServer::handle_client(WifiSocket client)
     }
 
     close_wifi_socket(client);
+}
+
+std::string WifiControllerServer::handle_system_power_request(const std::string& action)
+{
+    if (!power_control_enabled()) {
+        return http_error_response(
+            403,
+            "Forbidden",
+            "{\"ok\":false,\"error\":\"System power control requires the Proton install script.\"}"
+        );
+    }
+
+    if (!run_power_command(action)) {
+        return http_error_response(
+            403,
+            "Forbidden",
+            "{\"ok\":false,\"error\":\"System power command was not permitted.\"}"
+        );
+    }
+
+    return http_response("{\"ok\":true}", "application/json");
 }
 
 void WifiControllerServer::handle_visualizer_websocket(WifiSocket client, const std::string& request)

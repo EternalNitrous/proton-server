@@ -124,6 +124,7 @@ public:
                                  const std::array<PWMValues, 6>& render_pwm);
     WifiControllerSnapshot snapshot() const;
     std::string visualizer_json() const;
+    std::string logs_json() const;
     const std::string& status() const { return status_; }
 
 private:
@@ -131,6 +132,7 @@ private:
     void handle_client(WifiSocket client);
     void handle_websocket(WifiSocket client, const std::string& request);
     void handle_visualizer_websocket(WifiSocket client, const std::string& request);
+    std::string handle_system_power_request(const std::string& action);
     bool update_coordinates(const std::string& body);
     bool remove_visualizer_client(WifiSocket client);
     void start_mdns(int port);
