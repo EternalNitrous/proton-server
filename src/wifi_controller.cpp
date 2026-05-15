@@ -14,6 +14,7 @@
 #include <limits>
 #include <csignal>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <vector>
 
@@ -49,9 +50,6 @@ constexpr double BODY_RADIUS_MIN = 0.10;
 constexpr double STEP_HEIGHT_MIN = 0.02;
 constexpr double STEP_HEIGHT_MAX = 0.12;
 constexpr double RAD_TO_DEG = 180.0 / 3.14159265358979323846;
-#ifndef _WIN32
-constexpr const char* POWER_CONTROL_MARKER_PATH = "/etc/proton-server/power-control-enabled";
-#endif
 
 using Clock = std::chrono::steady_clock;
 
@@ -404,7 +402,7 @@ std::string http_error_response(int status_code,
         << "Content-Type: application/json\r\n"
         << "Content-Length: " << body.size() << "\r\n"
         << "Access-Control-Allow-Origin: *\r\n"
-        << "Access-Control-Allow-Headers: Content-Type\r\n"
+        << "Access-Control-Allow-Headers: Content-Type, X-Proton-Power-Key\r\n"
         << "Connection: close\r\n\r\n"
         << body;
     return out.str();
@@ -414,7 +412,7 @@ std::string no_content_response()
 {
     return "HTTP/1.1 204 No Content\r\n"
            "Access-Control-Allow-Origin: *\r\n"
-           "Access-Control-Allow-Headers: Content-Type\r\n"
+           "Access-Control-Allow-Headers: Content-Type, X-Proton-Power-Key\r\n"
            "Connection: close\r\n\r\n";
 }
 
@@ -427,15 +425,6 @@ std::string not_found_response()
            "Not found\n";
 }
 
-bool power_control_enabled()
-{
-#ifdef _WIN32
-    return false;
-#else
-    return access(POWER_CONTROL_MARKER_PATH, F_OK) == 0;
-#endif
-}
-
 bool run_power_command(const std::string& action)
 {
 #ifdef _WIN32
@@ -445,7 +434,7 @@ bool run_power_command(const std::string& action)
     const char* command = nullptr;
     if (action == "shutdown") {
         command = "/usr/bin/sudo -n /usr/sbin/shutdown -h now";
-    } else if (action == "restart") {
+    } else if (action == "restart" || action == "reboot") {
         command = "/usr/bin/sudo -n /usr/sbin/reboot";
     } else {
         return false;
@@ -453,6 +442,20 @@ bool run_power_command(const std::string& action)
 
     return std::system(command) == 0;
 #endif
+}
+
+std::string random_power_key()
+{
+    static constexpr char hex[] = "0123456789abcdef";
+    std::random_device random;
+    std::string key;
+    key.reserve(48);
+    for (int i = 0; i < 24; i++) {
+        const unsigned int value = random() & 0xff;
+        key.push_back(hex[value >> 4]);
+        key.push_back(hex[value & 0x0f]);
+    }
+    return key;
 }
 
 bool send_all(WifiSocket client, const std::string& data)
@@ -684,7 +687,7 @@ std::optional<WifiJoystick> joystick_after_key(const std::string& body, const st
     return WifiJoystick{clamp_axis(*x), clamp_axis(*y)};
 }
 
-std::string snapshot_json(const WifiControllerSnapshot& snapshot)
+std::string snapshot_json(const WifiControllerSnapshot& snapshot, const std::string& power_key = "")
 {
     std::ostringstream body;
     body << "{"
@@ -706,8 +709,11 @@ std::string snapshot_json(const WifiControllerSnapshot& snapshot)
          << "\"secondary_x\":\"" << axis_action_name(snapshot.secondary_x_action) << "\","
          << "\"secondary_y\":\"" << axis_action_name(snapshot.secondary_y_action) << "\","
          << "\"primary\":{\"x\":" << snapshot.primary.x << ",\"y\":" << snapshot.primary.y << "},"
-         << "\"secondary\":{\"x\":" << snapshot.secondary.x << ",\"y\":" << snapshot.secondary.y << "}"
-         << "}";
+         << "\"secondary\":{\"x\":" << snapshot.secondary.x << ",\"y\":" << snapshot.secondary.y << "}";
+    if (!power_key.empty()) {
+        body << ",\"power_key\":\"" << power_key << "\"";
+    }
+    body << "}";
     return body.str();
 }
 
@@ -1289,9 +1295,11 @@ void WifiControllerServer::handle_client(WifiSocket client)
     } else if (request.rfind("GET /logs.json", 0) == 0) {
         send_all(client, http_response(logs_json(), "application/json"));
     } else if (request.rfind("POST /system/shutdown", 0) == 0) {
-        send_all(client, handle_system_power_request("shutdown"));
+        send_all(client, handle_system_power_request(request, "shutdown"));
     } else if (request.rfind("POST /system/restart", 0) == 0) {
-        send_all(client, handle_system_power_request("restart"));
+        send_all(client, handle_system_power_request(request, "restart"));
+    } else if (request.rfind("POST /system/reboot", 0) == 0) {
+        send_all(client, handle_system_power_request(request, "reboot"));
     } else if (request.rfind("GET /control.json", 0) == 0
                || request.rfind("GET /status.json", 0) == 0) {
         send_all(client, http_response(snapshot_json(snapshot()), "application/json"));
@@ -1304,13 +1312,15 @@ void WifiControllerServer::handle_client(WifiSocket client)
     close_wifi_socket(client);
 }
 
-std::string WifiControllerServer::handle_system_power_request(const std::string& action)
+std::string WifiControllerServer::handle_system_power_request(const std::string& request,
+                                                              const std::string& action)
 {
-    if (!power_control_enabled()) {
+    const std::string power_key = header_value(request, "X-Proton-Power-Key: ");
+    if (power_key.empty() || !power_key_is_active(power_key)) {
         return http_error_response(
             403,
             "Forbidden",
-            "{\"ok\":false,\"error\":\"System power control requires the Proton install script.\"}"
+            "{\"ok\":false,\"error\":\"Power requests require an active control WebSocket key.\"}"
         );
     }
 
@@ -1318,7 +1328,7 @@ std::string WifiControllerServer::handle_system_power_request(const std::string&
         return http_error_response(
             403,
             "Forbidden",
-            "{\"ok\":false,\"error\":\"System power command was not permitted.\"}"
+            "{\"ok\":false,\"error\":\"System power command was not permitted. Re-run scripts/install_raspbian.sh so sudoers allows proton-server to shutdown or reboot.\"}"
         );
     }
 
@@ -1379,8 +1389,9 @@ void WifiControllerServer::handle_websocket(WifiSocket client, const std::string
         return;
     }
 
+    const std::string power_key = register_power_key();
     websocket_clients_.fetch_add(1);
-    send_all(client, websocket_frame(snapshot_json(snapshot())));
+    send_all(client, websocket_frame(snapshot_json(snapshot(), power_key)));
 
     std::string payload;
     while (running_ && receive_websocket_payload(client, payload)) {
@@ -1392,6 +1403,7 @@ void WifiControllerServer::handle_websocket(WifiSocket client, const std::string
     }
 
     websocket_clients_.fetch_sub(1);
+    remove_power_key(power_key);
     close_wifi_socket(client);
 }
 
@@ -1402,6 +1414,34 @@ bool WifiControllerServer::remove_visualizer_client(WifiSocket client)
     if (it == visualizer_clients_.end()) return false;
     visualizer_clients_.erase(it);
     return true;
+}
+
+std::string WifiControllerServer::register_power_key()
+{
+    std::string key;
+    {
+        std::lock_guard<std::mutex> lock(power_key_mutex_);
+        do {
+            key = random_power_key();
+        } while (std::find(active_power_keys_.begin(), active_power_keys_.end(), key) != active_power_keys_.end());
+        active_power_keys_.push_back(key);
+    }
+    return key;
+}
+
+void WifiControllerServer::remove_power_key(const std::string& key)
+{
+    std::lock_guard<std::mutex> lock(power_key_mutex_);
+    auto it = std::find(active_power_keys_.begin(), active_power_keys_.end(), key);
+    if (it != active_power_keys_.end()) {
+        active_power_keys_.erase(it);
+    }
+}
+
+bool WifiControllerServer::power_key_is_active(const std::string& key) const
+{
+    std::lock_guard<std::mutex> lock(power_key_mutex_);
+    return std::find(active_power_keys_.begin(), active_power_keys_.end(), key) != active_power_keys_.end();
 }
 
 bool WifiControllerServer::update_coordinates(const std::string& body)

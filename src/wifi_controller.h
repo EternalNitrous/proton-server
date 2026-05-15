@@ -132,9 +132,12 @@ private:
     void handle_client(WifiSocket client);
     void handle_websocket(WifiSocket client, const std::string& request);
     void handle_visualizer_websocket(WifiSocket client, const std::string& request);
-    std::string handle_system_power_request(const std::string& action);
+    std::string handle_system_power_request(const std::string& request, const std::string& action);
     bool update_coordinates(const std::string& body);
     bool remove_visualizer_client(WifiSocket client);
+    std::string register_power_key();
+    void remove_power_key(const std::string& key);
+    bool power_key_is_active(const std::string& key) const;
     void start_mdns(int port);
     void stop_mdns();
 
@@ -143,6 +146,8 @@ private:
     mutable std::mutex visualizer_mutex_;
     VisualizerSnapshot visualizer_;
     std::vector<WifiSocket> visualizer_clients_;
+    mutable std::mutex power_key_mutex_;
+    std::vector<std::string> active_power_keys_;
     std::string status_ = "disabled";
     std::atomic<bool> running_{false};
     std::atomic<int> websocket_clients_{0};
