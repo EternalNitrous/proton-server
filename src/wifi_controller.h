@@ -124,6 +124,7 @@ public:
                                  const std::array<PWMValues, 6>& render_pwm);
     WifiControllerSnapshot snapshot() const;
     std::string visualizer_json() const;
+    std::string logs_json() const;
     const std::string& status() const { return status_; }
 
 private:

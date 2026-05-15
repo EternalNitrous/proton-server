@@ -49,6 +49,7 @@ constexpr double HEIGHT_MAX = 0.14;
 constexpr double BODY_RADIUS_MIN = 0.10;
 constexpr double STEP_HEIGHT_MIN = 0.02;
 constexpr double STEP_HEIGHT_MAX = 0.12;
+constexpr double RAD_TO_DEG = 180.0 / 3.14159265358979323846;
 
 using Clock = std::chrono::steady_clock;
 
@@ -698,6 +699,41 @@ void append_vec3_json(std::ostringstream& body, const Vec3& point)
     body << "[" << point.x << "," << point.y << "," << point.z << "]";
 }
 
+std::string fixed_value(double value, int precision)
+{
+    std::ostringstream body;
+    body.setf(std::ios::fixed);
+    body.precision(precision);
+    body << value;
+    return body.str();
+}
+
+void append_json_string_array(std::ostringstream& body, const std::vector<std::string>& lines)
+{
+    body << "[";
+    for (std::size_t i = 0; i < lines.size(); i++) {
+        if (i > 0) body << ",";
+        body << "\"";
+        for (char ch : lines[i]) {
+            switch (ch) {
+                case '\\': body << "\\\\"; break;
+                case '"': body << "\\\""; break;
+                case '\n': body << "\\n"; break;
+                case '\r': body << "\\r"; break;
+                case '\t': body << "\\t"; break;
+                default:
+                    if (static_cast<unsigned char>(ch) < 0x20) {
+                        body << " ";
+                    } else {
+                        body << ch;
+                    }
+            }
+        }
+        body << "\"";
+    }
+    body << "]";
+}
+
 std::string visualizer_snapshot_json(const VisualizerSnapshot& snapshot)
 {
     std::ostringstream body;
@@ -744,6 +780,103 @@ std::string visualizer_snapshot_json(const VisualizerSnapshot& snapshot)
         body << "]";
     }
 
+    body << "}";
+    return body.str();
+}
+
+std::string logs_snapshot_json(const WifiControllerSnapshot& state,
+                               const VisualizerSnapshot& visualizer,
+                               const std::string& server_status)
+{
+    std::vector<std::string> hud_lines;
+    std::vector<std::string> terminal_lines;
+
+    hud_lines.push_back(std::string("Input   : Wi-Fi :") + std::to_string(state.port)
+                        + (state.client_connected ? " connected" : " waiting"));
+    hud_lines.push_back("Height  : " + fixed_value(state.height, 3) + " m");
+    hud_lines.push_back("Body rad: " + fixed_value(state.body_radius, 3) + " m");
+    hud_lines.push_back("Step hgt: " + fixed_value(state.step_height, 3) + " m");
+    hud_lines.push_back("Speed   : " + fixed_value(state.speed, 3) + " m/s");
+    hud_lines.push_back("Relay   : " + std::string(state.relay_status ? "on" : "off"));
+    hud_lines.push_back("Position: " + std::string(state.position == 1 ? "standing" : "sitting"));
+    hud_lines.push_back("Gait    : " + std::to_string(state.gait));
+    hud_lines.push_back("Voltage : " + (state.voltage > 0.0 ? fixed_value(state.voltage, 2) + " V" : "--"));
+    hud_lines.push_back("Current : " + (state.current > 0.0 ? fixed_value(state.current, 2) + " A" : "--"));
+
+    if (visualizer.available) {
+        hud_lines.push_back("Yaw     : " + fixed_value(visualizer.pose.yaw * RAD_TO_DEG, 1) + " deg");
+        hud_lines.push_back("--- IK angles (deg, tibia ext) ---");
+        constexpr const char* leg_names[6] = {"R1", "R2", "R3", "L1", "L2", "L3"};
+        for (int i = 0; i < 6; i++) {
+            const LegJoints& joints = visualizer.legs[i].joints;
+            std::ostringstream line;
+            line.setf(std::ios::fixed);
+            line.precision(1);
+            line << leg_names[i]
+                 << "  cx=" << joints.coxa * RAD_TO_DEG
+                 << "  fm=" << joints.femur * RAD_TO_DEG
+                 << "  tb=" << -joints.tibia * RAD_TO_DEG
+                 << (visualizer.legs[i].swing ? " ^" : "  ");
+            hud_lines.push_back(line.str());
+        }
+
+        hud_lines.push_back("--- Servo angles (deg) ---");
+        for (int i = 0; i < 6; i++) {
+            ServoAngles servo = to_servo_angles(i, visualizer.legs[i].joints);
+            std::ostringstream line;
+            line.setf(std::ios::fixed);
+            line.precision(1);
+            line << leg_names[i]
+                 << "  cx=" << servo.coxa
+                 << "  fm=" << servo.femur
+                 << "  tb=" << servo.tibia;
+            hud_lines.push_back(line.str());
+        }
+
+        hud_lines.push_back("--- PWM values ---");
+        for (int i = 0; i < 6; i++) {
+            const PWMValues& pwm = visualizer.legs[i].pwm;
+            std::ostringstream line;
+            line << leg_names[i]
+                 << "  cx=" << pwm.coxa
+                 << "  fm=" << pwm.femur
+                 << "  tb=" << pwm.tibia;
+            hud_lines.push_back(line.str());
+        }
+    } else {
+        hud_lines.push_back("HUD frame unavailable");
+        hud_lines.push_back("Angle data unavailable until the first robot frame is produced");
+    }
+
+    terminal_lines.push_back("proton-server: " + server_status);
+    terminal_lines.push_back("control clients: " + std::string(state.client_connected ? "connected" : "none"));
+    terminal_lines.push_back("updates: " + std::to_string(state.update_count));
+    if (!visualizer.available) {
+        terminal_lines.push_back("WARNING: HUD/angle frame is not available; showing control status only");
+    }
+    if (state.voltage > 0.0 && state.voltage < config::Servo2040VoltageCritical) {
+        terminal_lines.push_back("ERROR: servo voltage is below critical threshold ("
+                                 + fixed_value(state.voltage, 2) + " V)");
+    } else if (state.voltage > 0.0 && state.voltage < config::Servo2040VoltageWarn) {
+        terminal_lines.push_back("WARNING: servo voltage is below warning threshold ("
+                                 + fixed_value(state.voltage, 2) + " V)");
+    }
+    if (state.relay_control_active) {
+        terminal_lines.push_back("relay request pending: "
+                                 + std::string(state.target_relay_status ? "on" : "off"));
+    }
+    if (state.position_control_active) {
+        terminal_lines.push_back("position request pending: "
+                                 + std::to_string(state.target_position));
+    }
+
+    std::ostringstream body;
+    body << "{"
+         << "\"ok\":true,"
+         << "\"hud\":";
+    append_json_string_array(body, hud_lines);
+    body << ",\"terminal\":";
+    append_json_string_array(body, terminal_lines);
     body << "}";
     return body.str();
 }
@@ -1066,6 +1199,35 @@ std::string WifiControllerServer::visualizer_json() const
     return visualizer_snapshot_json(visualizer_);
 }
 
+std::string WifiControllerServer::logs_json() const
+{
+    WifiControllerSnapshot state_snapshot;
+    VisualizerSnapshot visualizer_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        state_snapshot = state_;
+        state_snapshot.seconds_since_update = seconds_since(last_update_time_);
+        const bool websocket_connected = websocket_clients_.load() > 0;
+        state_snapshot.client_connected = websocket_connected
+            || state_snapshot.seconds_since_update <= CONNECTED_TIMEOUT_SECONDS;
+        const bool recent_control = state_snapshot.client_connected
+            && state_snapshot.seconds_since_update <= ACTIVE_TIMEOUT_SECONDS;
+        state_snapshot.active = control_active(state_snapshot)
+            && (websocket_connected
+                || recent_control
+                || state_snapshot.height_control_active
+                || state_snapshot.position_control_active
+                || state_snapshot.gait_control_active
+                || state_snapshot.relay_control_active);
+    }
+    {
+        std::lock_guard<std::mutex> lock(visualizer_mutex_);
+        visualizer_snapshot = visualizer_;
+    }
+
+    return logs_snapshot_json(state_snapshot, visualizer_snapshot, status_);
+}
+
 void WifiControllerServer::serve_loop()
 {
     while (running_) {
@@ -1123,6 +1285,8 @@ void WifiControllerServer::handle_client(WifiSocket client)
         return;
     } else if (request.rfind("GET /visualizer.json", 0) == 0) {
         send_all(client, http_response(visualizer_json(), "application/json"));
+    } else if (request.rfind("GET /logs.json", 0) == 0) {
+        send_all(client, http_response(logs_json(), "application/json"));
     } else if (request.rfind("POST /system/shutdown", 0) == 0) {
         send_all(client, handle_system_power_request(request, "shutdown"));
     } else if (request.rfind("POST /system/restart", 0) == 0) {
