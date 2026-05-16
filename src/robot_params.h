@@ -46,8 +46,8 @@ inline RobotParams get_robot_params()
     RobotParams p;
 
     // ---- Tuning ---------------------------------------------------
-    constexpr double TARGET_KNEE_DEG = config::DefaultKneeAngleDeg;
-    constexpr double TARGET_BODY_Z   = config::DefaultBodyHeight;
+    constexpr double TARGET_KNEE_DEG = config::NeutralStanceKneeAngleDeg;
+    constexpr double TARGET_BODY_Z   = config::NeutralStanceBodyHeight;
     const     double D2R             = M_PI / 180.0;
 
     // ---- Mount angles (radians) -----------------------------------
@@ -61,7 +61,8 @@ inline RobotParams get_robot_params()
     }
 
     // ---- Default foot positions ----------------------------------
-    // Derived from TARGET_KNEE_DEG so the knee rests at the target angle.
+    // Derived from neutral stance geometry so adapters can preserve a
+    // preferred knee angle while changing link lengths or stance height.
     auto& d = p.dims;
     double tibia_target = (TARGET_KNEE_DEG - 180.0) * D2R;
     double lcz = std::sqrt(d.femur_len*d.femur_len + d.tibia_len*d.tibia_len

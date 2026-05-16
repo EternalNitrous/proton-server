@@ -272,8 +272,13 @@ restores the all-1500 startup pose.
 
 Most robot-specific values are in `src/config.h`. Edit that file when adapting
 the simulator to a different hexapod: link lengths, body dimensions, leg mount
-angles/radii, default height, gait tuning, servo calibration, PWM limits,
-Servo2040 pin order, and hardware direction flips all live there.
+angles/radii, neutral stance geometry, runtime height limits, gait tuning,
+servo calibration, PWM limits, Servo2040 pin order, and hardware direction
+flips all live there.
+
+`NeutralStanceBodyHeight` and `NeutralStanceKneeAngleDeg` are design values used
+to derive the default foot XY positions. The active startup/standing height is
+`Motion.start_height`, clamped by `Motion.height_min` and `Motion.height_max`.
 
 - **Body**: 140 × 100 mm rectangle with 20 mm 45-degree chamfered corners
 - **Legs**: 6 × 3-DOF (coxa–femur–tibia, no hip joint)
