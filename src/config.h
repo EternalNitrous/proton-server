@@ -35,8 +35,12 @@ inline constexpr std::array<double, 6> CoxaAngleOffsetsDeg = {
     12.0, 0.0, -12.0, -12.0, 0.0, 12.0
 };
 
-inline constexpr double DefaultKneeAngleDeg = 115.0;
-inline constexpr double DefaultBodyHeight = 0.12;
+// Neutral stance geometry used to derive default foot XY positions.
+// Runtime standing height is Motion.start_height, not NeutralStanceBodyHeight.
+inline constexpr double NeutralStanceKneeAngleDeg = 115.0;
+inline constexpr double NeutralStanceBodyHeight = 0.12;
+inline constexpr double DefaultKneeAngleDeg = NeutralStanceKneeAngleDeg;
+inline constexpr double DefaultBodyHeight = NeutralStanceBodyHeight;
 inline constexpr double SitBodyHeight = 0.02;
 
 // ---- IK and workspace limits (degrees) ------------------------
