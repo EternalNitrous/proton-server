@@ -1042,9 +1042,6 @@ void WifiControllerServer::update_robot_status(double height, int position, int 
             state_.target_position = 1;
             state_.position_control_active = false;
         }
-    } else {
-        state_.position = reported_position;
-        state_.target_position = state_.position;
     }
     state_.gait = std::clamp(gait, 1, 4);
 

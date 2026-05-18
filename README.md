@@ -72,10 +72,11 @@ completed. `relay_status` accepts `1`/`0` or `true`/`false`; requesting `0`
 lowers to sit height and turns the relay off after the robot is low, while
 requesting `1` turns the relay on and returns to normal height. Reported
 `relay_status` and `position` values change only after the relay or robot has
-actually reached that state. Directional stick input is ignored while the relay
-is off. After 15 seconds with no robot-control activity, the simulator requests
-`relay_status:0`. `position`, `gait`, `voltage`, and `current` are tracked and
-reported in status JSON.
+actually reached that state. Relay shutdown/startup does not change the reported
+`position`; only an explicit `position` request does. Directional stick input is
+ignored while the relay is off. After 15 seconds with no robot-control activity,
+the simulator requests `relay_status:0`. `position`, `gait`, `voltage`, and
+`current` are tracked and reported in status JSON.
 
 | Control | Action |
 |---|---|
