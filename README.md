@@ -172,7 +172,6 @@ Keys are fully combinable — W+A walks diagonally, W+E arcs like a car-turn, et
 
 - CMake ≥ 3.16
 - C++17 compiler (GCC, Clang, MSVC)
-- Git (for FetchContent to download raylib)
 - Internet connection on first build
 
 raylib is fetched and built automatically — no manual install required.
@@ -227,6 +226,14 @@ mkdir build && cd build
 cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build . -j4
 proton-server.exe
+```
+
+### Cross-compile Windows with MinGW-w64
+
+```bash
+cmake -S . -B build-mingw -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+cmake --build build-mingw -j4
 ```
 
 ### macOS (Homebrew)

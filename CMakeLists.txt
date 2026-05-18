@@ -6,9 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(FetchContent)
 
 FetchContent_Declare(raylib
-    GIT_REPOSITORY https://github.com/raysan5/raylib.git
-    GIT_TAG        5.5
-    GIT_SHALLOW    TRUE
+    URL                        https://github.com/raysan5/raylib/archive/refs/tags/5.5.tar.gz
+    URL_HASH                   SHA256=aea98ecf5bc5c5e0b789a76de0083a21a70457050ea4cc2aec7566935f5e258e
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(BUILD_EXAMPLES  OFF CACHE BOOL "" FORCE)
 set(BUILD_GAMES     OFF CACHE BOOL "" FORCE)
@@ -51,6 +51,7 @@ if(APPLE)
 endif()
 
 if(WIN32)
+    target_compile_definitions(proton-server PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(proton-server PRIVATE ws2_32 iphlpapi)
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         set_target_properties(proton-server PROPERTIES WIN32_EXECUTABLE TRUE)
