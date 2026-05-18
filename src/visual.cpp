@@ -225,6 +225,7 @@ void draw_left_panel(const HudContext& hud, int& stable_width)
     double speed = std::sqrt(hud.cmd.twist.linear_x*hud.cmd.twist.linear_x
                             + hud.cmd.twist.linear_y*hud.cmd.twist.linear_y);
     snprintf(buf, sizeof(buf), "Height  : %.3f m", hud.cmd.pose.z); text(buf, WHITE);
+    snprintf(buf, sizeof(buf), "Body rad: %.3f m", hud.cmd.body_radius); text(buf, WHITE);
     snprintf(buf, sizeof(buf), "Set walk: %.3f m/s", hud.current_walk_speed); text(buf, WHITE);
     snprintf(buf, sizeof(buf), "Set strf: %.3f m/s", hud.current_strafe_speed); text(buf, WHITE);
     snprintf(buf, sizeof(buf), "Set spin: %.3f rad/s", hud.current_spin_rate); text(buf, WHITE);
@@ -275,7 +276,7 @@ void draw_left_panel(const HudContext& hud, int& stable_width)
     }
     py += 6;
 
-    text("--- IK angles (deg, tibia ext) ---", {180, 180, 180, 255}, 14);
+    text("--- IK angles (deg, tibia bend) ---", {180, 180, 180, 255}, 14);
     for (int i = 0; i < 6; i++) {
         const LegJoints& j = hud.render_state.legs[i];
         snprintf(buf, sizeof(buf), "%s  cx=%+6.1f  fm=%+6.1f  tb=%+6.1f%s",

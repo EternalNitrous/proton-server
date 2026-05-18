@@ -31,6 +31,8 @@ struct InputState {
     bool wifi_connected = false;
     bool wifi_active = false;
     bool wifi_relay_status = false;
+    bool wifi_target_relay_status = false;
+    bool wifi_relay_control_active = false;
     int wifi_port = 0;
     int wifi_update_count = 0;
     double wifi_seconds_since_update = 0.0;

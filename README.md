@@ -19,7 +19,8 @@ endpoints.
 
 | C++ file | Purpose |
 |---|---|
-| `src/config.h` | User-tunable robot, gait, servo, and hardware settings |
+| `proton.conf` | User-facing robot profile: dimensions, servos, and Servo2040 pin map |
+| `src/config.h` / `src/config.cpp` | Built-in defaults, profile parsing, and config validation |
 | `src/robot_params.h` | Robot geometry and default stance parameters |
 | `src/kinematics.h` | IK solver and FK helpers |
 | `src/gaits.h` | Gait phase tables and foot trajectory engine |
@@ -36,6 +37,37 @@ endpoints.
 Keyboard, controller, and Wi-Fi input switch actively while the simulator is
 running. The active source follows whichever method you are currently using;
 when a new source starts sending control input, it takes over immediately.
+
+## Robot profile
+
+Most builders should adapt the robot by editing `proton.conf`, not C++ code.
+The file uses `key = value` lines, millimetres for keys ending in `_mm`, and
+degrees for keys ending in `_deg`. It covers link lengths, body size, leg mount
+positions, standing/sitting heights, servo range, PWM centers, solver safety
+limits, and the Servo2040 pin map.
+
+The body layout uses measurements a builder can take directly between coxa
+rotation centers: `l1_to_r1_mm`, `l1_to_l3_mm`, and `l2_to_r2_mm`.
+The server derives the coxa pivot positions from those values while keeping the
+visual body outline as a separate chassis shape. `coxa_offsets_deg`,
+`footprint_design_knee_angle_deg`, and `footprint_design_height_mm` reproduce
+the original simulator's default foot positions.
+
+The app-facing ranges for body height, stance/body radius, step height, and
+speed are also configured there. `standing_height_mm` is the live neutral body
+height. `body_radius_mm` is measured from the body center to the middle feet;
+corner foot distance follows from the coxa offsets.
+
+Validate the profile without opening the simulator:
+
+```bash
+./build/proton-server --validate-config --config proton.conf
+```
+
+If `proton.conf` exists in the working directory, it is loaded automatically.
+Use `--config other.conf` to require a specific file. The default profile is
+set up for 270 degree servos, but `servo_type_deg` can be changed if your
+hardware uses a different servo range.
 
 ### Wi-Fi controller
 
@@ -65,17 +97,17 @@ signed dance speed, so multiple dance axes can be active at once.
 
 `body_height` sets the requested body height and is clamped to the safe height
 range. The legacy `height` key is still accepted as an alias. `body_radius`
-moves the neutral stance radius, `step_height` sets the gait foot lift height,
-and `speed` sets target linear speed. These values use metres over the wire, so
-the app can display them as centimetres.
-`position:0` runs the full shutdown animation without closing the simulator;
-`position:1` starts the stand/startup animation only after shutdown has
-completed. `relay_status` accepts `1`/`0` or `true`/`false`; requesting `0`
-lowers to sit height and turns the relay off after the robot is low, while
-requesting `1` turns the relay on and returns to normal height. Reported
-`relay_status` and `position` values change only after the relay or robot has
-actually reached that state. Directional stick input is ignored while the relay
-is off. After 15 seconds with no robot-control activity, the simulator requests
+moves the neutral body-center-to-foot stance radius, `step_height` sets the gait
+foot lift height, and `speed` sets target linear speed. These values use metres
+over the wire, so the app can display them as centimetres.
+`position:0` moves into the side-parallel sit pose while keeping the relay on;
+`position:1` starts the stand/startup animation from that sit pose.
+`relay_status` accepts `1`/`0` or `true`/`false`; requesting `0` lowers the body
+to sit height and turns the relay off after the robot is low, while requesting
+`1` turns the relay on and returns to normal height. Reported `relay_status` and
+`position` values change only after the relay or robot has actually reached that
+state. Directional stick input is ignored while the relay is off. After 15
+seconds with no robot-control activity, the simulator requests
 `relay_status:0`. `position`, `gait`, `voltage`, and `current` are tracked and
 reported in status JSON.
 
@@ -270,17 +302,7 @@ restores the all-1500 startup pose.
 
 ## Robot specifications
 
-Most robot-specific values are in `src/config.h`. Edit that file when adapting
-the simulator to a different hexapod: link lengths, body dimensions, leg mount
-angles/radii, neutral stance geometry, runtime height limits, gait tuning,
-servo calibration, PWM limits, Servo2040 pin order, and hardware direction
-flips all live there.
-
-`NeutralStanceBodyHeight` and `NeutralStanceKneeAngleDeg` are design values used
-to derive the default foot XY positions. The active startup/standing height is
-`Motion.start_height`, clamped by `Motion.height_min` and `Motion.height_max`.
-
-- **Body**: 140 × 100 mm rectangle with 20 mm 45-degree chamfered corners
+- **Body**: configured from coxa-center measurements in `proton.conf`
 - **Legs**: 6 × 3-DOF (coxa–femur–tibia, no hip joint)
   - Coxa: 43 mm
   - Femur: 80 mm

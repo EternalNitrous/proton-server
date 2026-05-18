@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 namespace {
 
@@ -108,18 +109,15 @@ bool key_active(int key)
 
 bool keyboard_control_requested()
 {
-    return key_active(KEY_W) || key_active(KEY_S)
-        || key_active(KEY_A) || key_active(KEY_D)
-        || key_active(KEY_Q) || key_active(KEY_E)
-        || key_active(KEY_R) || key_active(KEY_F)
-        || key_active(KEY_UP) || key_active(KEY_DOWN)
-        || key_active(KEY_LEFT) || key_active(KEY_RIGHT)
-        || key_active(KEY_ONE) || key_active(KEY_TWO) || key_active(KEY_THREE)
-        || key_active(KEY_FOUR) || key_active(KEY_FIVE) || key_active(KEY_SIX)
-        || key_active(KEY_Z) || key_active(KEY_X) || key_active(KEY_C)
-        || key_active(KEY_TAB)
-        || key_active(KEY_EQUAL) || key_active(KEY_MINUS)
-        || key_active(KEY_KP_ADD) || key_active(KEY_KP_SUBTRACT);
+    static constexpr int ControlKeys[] = {
+        KEY_W, KEY_S, KEY_A, KEY_D, KEY_Q, KEY_E, KEY_R, KEY_F,
+        KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT,
+        KEY_ONE, KEY_TWO, KEY_THREE, KEY_FOUR, KEY_FIVE, KEY_SIX,
+        KEY_Z, KEY_X, KEY_C, KEY_TAB,
+        KEY_EQUAL, KEY_MINUS, KEY_KP_ADD, KEY_KP_SUBTRACT
+    };
+
+    return std::any_of(std::begin(ControlKeys), std::end(ControlKeys), key_active);
 }
 
 bool controller_control_requested(const InputState& input)
@@ -136,18 +134,23 @@ bool controller_control_requested(const InputState& input)
         return true;
     }
 
-    return gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_UP)
-        || gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)
-        || gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_DOWN)
-        || gamepad_down(input, GAMEPAD_BUTTON_LEFT_FACE_LEFT)
-        || gamepad_down(input, GAMEPAD_BUTTON_RIGHT_FACE_UP)
-        || gamepad_down(input, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)
-        || gamepad_down(input, GAMEPAD_BUTTON_RIGHT_FACE_DOWN)
-        || gamepad_down(input, GAMEPAD_BUTTON_RIGHT_FACE_LEFT)
-        || gamepad_down(input, GAMEPAD_BUTTON_LEFT_TRIGGER_1)
-        || gamepad_down(input, GAMEPAD_BUTTON_RIGHT_TRIGGER_1)
-        || gamepad_down(input, GAMEPAD_BUTTON_LEFT_THUMB)
-        || gamepad_down(input, GAMEPAD_BUTTON_RIGHT_THUMB);
+    static constexpr int ControlButtons[] = {
+        GAMEPAD_BUTTON_LEFT_FACE_UP,
+        GAMEPAD_BUTTON_LEFT_FACE_RIGHT,
+        GAMEPAD_BUTTON_LEFT_FACE_DOWN,
+        GAMEPAD_BUTTON_LEFT_FACE_LEFT,
+        GAMEPAD_BUTTON_RIGHT_FACE_UP,
+        GAMEPAD_BUTTON_RIGHT_FACE_RIGHT,
+        GAMEPAD_BUTTON_RIGHT_FACE_DOWN,
+        GAMEPAD_BUTTON_RIGHT_FACE_LEFT,
+        GAMEPAD_BUTTON_LEFT_TRIGGER_1,
+        GAMEPAD_BUTTON_RIGHT_TRIGGER_1,
+        GAMEPAD_BUTTON_LEFT_THUMB,
+        GAMEPAD_BUTTON_RIGHT_THUMB
+    };
+
+    return std::any_of(std::begin(ControlButtons), std::end(ControlButtons),
+                       [&](int button) { return gamepad_down(input, button); });
 }
 
 void populate_raw_joystick_state(InputState& input)
@@ -192,6 +195,16 @@ void populate_raw_joystick_state(InputState& input)
     previous_hats[input.device] = input.raw_hats;
 }
 
+bool source_requested(ControlInputSource source, const ControlInputState& state)
+{
+    switch (source) {
+        case ControlInputSource::KEYBOARD: return state.keyboard_requested;
+        case ControlInputSource::CONTROLLER: return state.controller_requested;
+        case ControlInputSource::WIFI: return state.wifi_requested;
+    }
+    return false;
+}
+
 } // namespace
 
 void apply_wifi_controller_snapshot(InputState& input,
@@ -201,6 +214,8 @@ void apply_wifi_controller_snapshot(InputState& input,
     input.wifi_connected = wifi.client_connected;
     input.wifi_active = wifi.active;
     input.wifi_relay_status = wifi.relay_status;
+    input.wifi_target_relay_status = wifi.target_relay_status;
+    input.wifi_relay_control_active = wifi.relay_control_active;
     input.wifi_port = wifi.port;
     input.wifi_update_count = wifi.update_count;
     input.wifi_seconds_since_update = wifi.seconds_since_update;
@@ -315,16 +330,7 @@ ControlInputState update_control_input_source(const InputState& input,
     } else if (wifi_started) {
         next.active_source = ControlInputSource::WIFI;
     } else {
-        auto active_source_still_requested = [&]() {
-            switch (previous.active_source) {
-                case ControlInputSource::KEYBOARD: return next.keyboard_requested;
-                case ControlInputSource::CONTROLLER: return next.controller_requested;
-                case ControlInputSource::WIFI: return next.wifi_requested;
-            }
-            return false;
-        };
-
-        if (active_source_still_requested()) {
+        if (source_requested(previous.active_source, next)) {
             next.active_source = previous.active_source;
         } else if (next.controller_requested) {
             next.active_source = ControlInputSource::CONTROLLER;

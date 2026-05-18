@@ -4,9 +4,11 @@
 
 void print_usage(const char* exe)
 {
-    std::printf("Usage: %s [--servo2040 PORT] [--pwm-control] [--port PORT]\n", exe);
+    std::printf("Usage: %s [--config FILE] [--servo2040 PORT] [--pwm-control] [--port PORT]\n", exe);
     std::printf("\n");
     std::printf("Options:\n");
+    std::printf("  --config FILE          Load robot dimensions, servos, and pin map from a .conf file.\n");
+    std::printf("  --validate-config      Check the config file and exit without opening the simulator.\n");
     std::printf("  --servo2040 PORT        Stream HUD PWM values to a Servo2040 serial port.\n");
     std::printf("  --servo2040-port PORT   Same as --servo2040.\n");
     std::printf("  --pwm-control-servo2040 PORT\n");
@@ -25,6 +27,17 @@ AppOptions parse_options(int argc, char** argv)
         std::string arg = argv[i];
         if (arg == "--help" || arg == "-h") {
             options.show_help = true;
+        } else if (arg == "--config") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "%s requires a config file path.\n", arg.c_str());
+                options.show_help = true;
+                options.parse_error = true;
+                break;
+            }
+            options.config_path = argv[++i];
+            options.config_path_explicit = true;
+        } else if (arg == "--validate-config") {
+            options.validate_config_only = true;
         } else if (arg == "--servo2040" || arg == "--servo2040-port"
                    || arg == "--pwm-control-servo2040") {
             if (i + 1 >= argc) {

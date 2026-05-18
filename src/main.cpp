@@ -1,9 +1,3 @@
-// ============================================================
-//  main.cpp — Hexapod Kinematic Simulator
-//
-//  The simulator loop lives here; input, rendering, Servo2040,
-//  options, and user-tunable configuration are split into modules.
-// ============================================================
 #include "raylib.h"
 
 #include "config.h"
@@ -20,6 +14,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 namespace {
 
@@ -50,6 +45,86 @@ double wifi_speed_from_control(const RobotControlState& control)
                       config::Motion.linear_speed_max);
 }
 
+struct ServoTelemetry {
+    double voltage_poll_time = config::Servo2040VoltagePollInterval, relay_active_time = 0.0;
+    double voltage = 0.0, current = 0.0;
+    int voltage_critical_samples = 0;
+    bool voltage_valid = false, current_valid = false;
+    bool voltage_warning = false, voltage_critical = false;
+
+    void reset_voltage_guard()
+    {
+        voltage_critical_samples = 0;
+        voltage_warning = false;
+    }
+
+    bool poll(double dt, Servo2040Client& servo2040, WifiControllerServer& wifi_controller)
+    {
+        if (!servo2040.is_connected() || voltage_critical) return false;
+
+        if (servo2040.relay_enabled()) {
+            relay_active_time += dt;
+        } else {
+            relay_active_time = 0.0;
+            reset_voltage_guard();
+        }
+
+        voltage_poll_time += dt;
+        if (voltage_poll_time < config::Servo2040VoltagePollInterval) return false;
+        voltage_poll_time = 0.0;
+
+        double reading = 0.0;
+        if (servo2040.read_voltage(reading)) {
+            voltage = reading;
+            voltage_valid = true;
+            wifi_controller.update_voltage(voltage);
+
+            const bool guard_armed =
+                servo2040.relay_enabled()
+                && relay_active_time >= config::Servo2040VoltageStartupDelay;
+            voltage_warning = guard_armed && voltage < config::Servo2040VoltageWarn;
+            if (guard_armed && voltage < config::Servo2040VoltageCritical) {
+                voltage_critical_samples++;
+                if (voltage_critical_samples >= config::Servo2040VoltageCriticalSamples) {
+                    voltage_critical = true;
+                    voltage_warning = false;
+                }
+            } else {
+                voltage_critical_samples = 0;
+            }
+        }
+
+        if (!servo2040.read_current(reading)) return voltage_critical;
+        current = reading;
+        current_valid = true;
+        wifi_controller.update_current(current);
+        return voltage_critical;
+    }
+};
+
+Color background_for_voltage(const ServoTelemetry& telemetry)
+{
+    if (telemetry.voltage_critical) return {190, 35, 35, 255};
+    if (!telemetry.voltage_warning) return {240, 242, 245, 255};
+
+    const double period = std::max(0.1, config::VoltageWarningPulseSeconds);
+    const double phase = std::fmod(GetTime(), period) / period;
+    const double pulse = std::pow(std::max(0.0, std::cos(phase * 2.0 * M_PI)), 3.0);
+    auto mix = [&](unsigned char a, unsigned char b) {
+        return static_cast<unsigned char>((double)a + ((double)b - (double)a) * pulse);
+    };
+    return {mix(240, 245), mix(242, 210), mix(245, 40), 255};
+}
+
+bool local_robot_activity(const KeyStatus& keys, const RobotControlState& control)
+{
+    return keys.kW || keys.kS || keys.kA || keys.kD
+        || keys.kQ || keys.kE || keys.kR || keys.kF
+        || control.active_dance != DanceMode::NONE
+        || control.startup_phase != StartupPhase::DONE
+        || control.shutdown_requested;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -60,6 +135,25 @@ int main(int argc, char** argv)
         return options.parse_error ? 1 : 0;
     }
 
+    config::LoadResult config_result =
+        config::load_user_config(options.config_path, options.config_path_explicit);
+    for (const std::string& warning : config_result.warnings) {
+        std::fprintf(stderr, "Config warning: %s\n", warning.c_str());
+    }
+    if (!config_result.ok) {
+        for (const std::string& error : config_result.errors) {
+            std::fprintf(stderr, "Config error: %s\n", error.c_str());
+        }
+        return 1;
+    }
+    if (config_result.loaded) {
+        std::printf("Robot config: %s\n", options.config_path.c_str());
+    }
+    if (options.validate_config_only) {
+        std::printf("Config validation passed.\n");
+        return 0;
+    }
+
     WifiControllerServer wifi_controller;
     if (wifi_controller.start(options.wifi_controller_port)) {
         std::printf("Wi-Fi controller: http://0.0.0.0:%d/\n", options.wifi_controller_port);
@@ -67,14 +161,12 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "Wi-Fi controller: %s\n", wifi_controller.status().c_str());
     }
 
-    // ---- Window setup ------------------------------------------
     const int SCR_W = config::ScreenWidth, SCR_H = config::ScreenHeight;
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE);
     InitWindow(SCR_W, SCR_H,
         "Hexapod Kinematic Simulator  |  Active input switching");
     SetTargetFPS(60);
 
-    // ---- Camera ------------------------------------------------
     constexpr float D2R = 3.14159265358979323846f / 180.0f;
     float cam_azimuth   = config::CameraAzimuthDeg * D2R;
     float cam_elevation = config::CameraElevationDeg * D2R;
@@ -84,7 +176,6 @@ int main(int argc, char** argv)
     camera.fovy       = config::CameraFovy;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    // ---- Robot initialisation ----------------------------------
     RobotParams params = get_robot_params();
 
     Servo2040Client servo2040;
@@ -102,31 +193,18 @@ int main(int argc, char** argv)
         }
     }
 
-    // ---- Gait state --------------------------------------------
     RobotControlState control = make_robot_control_state();
     GaitState gait_state;          // zero-init; gaits self-initialize
     BasePose base_pose, final_pose;
     RobotState robot_state;
     Vec3 feet_world[6];
 
-    // Pre-seed feet at default positions.
     for (int i = 0; i < 6; i++)
         gait_state.feet_world[i] = params.default_foot_positions[i];
 
-    // ============================================================
-    //  Main loop
-    // ============================================================
     bool shutdown_requested = false;
     bool shutdown_complete = false;
-    double voltage_poll_time = config::Servo2040VoltagePollInterval;
-    double relay_active_time = 0.0;
-    int voltage_critical_samples = 0;
-    bool voltage_valid = false;
-    double servo_voltage = 0.0;
-    bool current_valid = false;
-    double servo_current = 0.0;
-    bool voltage_warning = false;
-    bool voltage_critical = false;
+    ServoTelemetry telemetry;
     double relay_inactivity_time = 0.0;
     ControlInputState control_input;
 
@@ -148,9 +226,8 @@ int main(int argc, char** argv)
         }
         if (relay_set) {
             wifi_controller.update_relay_status(relay_hardware_target, complete_relay_request);
-            relay_active_time = 0.0;
-            voltage_critical_samples = 0;
-            voltage_warning = false;
+            telemetry.relay_active_time = 0.0;
+            telemetry.reset_voltage_guard();
         }
     };
 
@@ -160,46 +237,8 @@ int main(int argc, char** argv)
         }
 
         double dt = std::min((double)GetFrameTime(), 0.05);  // cap at 50 ms
-        if (options.servo2040_enabled && servo2040.is_connected() && !voltage_critical) {
-            if (servo2040.relay_enabled()) {
-                relay_active_time += dt;
-            } else {
-                relay_active_time = 0.0;
-                voltage_critical_samples = 0;
-                voltage_warning = false;
-            }
-            voltage_poll_time += dt;
-            if (voltage_poll_time >= config::Servo2040VoltagePollInterval) {
-                voltage_poll_time = 0.0;
-                double reading = 0.0;
-                if (servo2040.read_voltage(reading)) {
-                    servo_voltage = reading;
-                    voltage_valid = true;
-                    wifi_controller.update_voltage(servo_voltage);
-                    const bool voltage_guard_armed =
-                        servo2040.relay_enabled()
-                        && relay_active_time >= config::Servo2040VoltageStartupDelay;
-                    voltage_warning = voltage_guard_armed
-                                   && servo_voltage < config::Servo2040VoltageWarn;
-                    if (voltage_guard_armed
-                        && servo_voltage < config::Servo2040VoltageCritical) {
-                        voltage_critical_samples++;
-                        if (voltage_critical_samples >= config::Servo2040VoltageCriticalSamples) {
-                            voltage_critical = true;
-                            voltage_warning = false;
-                            shutdown_requested = true;
-                        }
-                    } else {
-                        voltage_critical_samples = 0;
-                    }
-                }
-                double current_reading = 0.0;
-                if (servo2040.read_current(current_reading)) {
-                    servo_current = current_reading;
-                    current_valid = true;
-                    wifi_controller.update_current(servo_current);
-                }
-            }
+        if (options.servo2040_enabled && telemetry.poll(dt, servo2040, wifi_controller)) {
+            shutdown_requested = true;
         }
 
         set_wifi_requested_relay();
@@ -210,7 +249,6 @@ int main(int argc, char** argv)
         bool keyboard_enabled = control_input.active_source == ControlInputSource::KEYBOARD;
         bool wifi_enabled = control_input.active_source == ControlInputSource::WIFI;
 
-        // ---- Mouse camera orbit --------------------------------
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
             Vector2 d = GetMouseDelta();
             cam_azimuth   += d.x * 0.005f;
@@ -242,16 +280,11 @@ int main(int argc, char** argv)
                                              wifi_speed_from_control(control));
         wifi_controller.update_shutdown_complete(control.shutdown_complete);
         WifiControllerSnapshot activity_snapshot = wifi_controller.snapshot();
-        const bool local_robot_activity =
-            keys.kW || keys.kS || keys.kA || keys.kD || keys.kQ || keys.kE || keys.kR || keys.kF
-            || control.active_dance != DanceMode::NONE
-            || control.startup_phase != StartupPhase::DONE
-            || control.shutdown_requested;
         const bool relay_can_timeout =
             activity_snapshot.relay_status
             && activity_snapshot.target_relay_status
             && !activity_snapshot.relay_control_active;
-        if (relay_can_timeout && !activity_snapshot.active && !local_robot_activity) {
+        if (relay_can_timeout && !activity_snapshot.active && !local_robot_activity(keys, control)) {
             relay_inactivity_time += dt;
             if (relay_inactivity_time >= WifiRelayInactivityTimeout) {
                 wifi_controller.request_relay_status(false, false);
@@ -278,7 +311,6 @@ int main(int argc, char** argv)
             }
         }
 
-        // ---- FK + compute max IK error -------------------------
         LegPoints fk_pts[6];
         double max_err = 0.0;
         double max_drag = 0.0;
@@ -295,12 +327,10 @@ int main(int argc, char** argv)
                                                 gait_state.is_swing, frame.render_state,
                                                 frame.render_pwm);
 
-        // ---- Record foot-plant events for trail -----------------
         if (!options.direct_pwm_control_enabled) {
             record_footprints(feet_world, gait_state.is_swing, (float)dt);
         }
 
-        // ---- Camera follow body --------------------------------
         float tx = (float)final_pose.x, ty = (float)final_pose.y, tz = (float)final_pose.z;
         Vector3 tgt = to_rl(tx, ty, tz);
         camera.target = tgt;
@@ -310,24 +340,8 @@ int main(int argc, char** argv)
             tgt.z + cam_distance * cosf(cam_elevation) * sinf(cam_azimuth)
         };
 
-        // ====================================================
-        //  Draw
-        // ====================================================
         BeginDrawing();
-        Color background = {240, 242, 245, 255};
-        if (voltage_critical) {
-            background = {190, 35, 35, 255};
-        } else if (voltage_warning) {
-            double period = std::max(0.1, config::VoltageWarningPulseSeconds);
-            double phase = std::fmod(GetTime(), period) / period;
-            double pulse = std::max(0.0, std::cos(phase * 2.0 * M_PI));
-            pulse = pulse * pulse * pulse;
-            auto mix = [&](unsigned char a, unsigned char b) {
-                return (unsigned char)((double)a + ((double)b - (double)a) * pulse);
-            };
-            background = {mix(240, 245), mix(242, 210), mix(245, 40), 255};
-        }
-        ClearBackground(background);
+        ClearBackground(background_for_voltage(telemetry));
 
         BeginMode3D(camera);
             draw_scene(params, final_pose, fk_pts, feet_world, gait_state.is_swing);
@@ -344,8 +358,9 @@ int main(int argc, char** argv)
             control.selected_pwm_leg, control.selected_pwm_joint,
             ctrl, shift,
             keys.kW, keys.kS, keys.kA, keys.kD, keys.kQ, keys.kE, keys.kR, keys.kF,
-            voltage_valid, servo_voltage, current_valid, servo_current,
-            voltage_warning, voltage_critical
+            telemetry.voltage_valid, telemetry.voltage,
+            telemetry.current_valid, telemetry.current,
+            telemetry.voltage_warning, telemetry.voltage_critical
         });
 
         EndDrawing();
