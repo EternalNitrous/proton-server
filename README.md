@@ -152,6 +152,14 @@ cmake --build . -j4
 proton-server.exe
 ```
 
+### Cross-compile Windows with MinGW-w64
+
+```bash
+cmake -S . -B build-mingw -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake
+cmake --build build-mingw -j4
+```
+
 ### macOS (Homebrew)
 
 ```bash

@@ -11,6 +11,13 @@
 #include <vector>
 
 #ifdef _WIN32
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
 #else
     #include <cerrno>
     #include <fcntl.h>
@@ -29,6 +36,7 @@ std::string lower_copy(std::string value)
     return value;
 }
 
+#ifndef _WIN32
 std::string read_small_file(const std::filesystem::path& path)
 {
     std::ifstream in(path);
@@ -37,6 +45,7 @@ std::string read_small_file(const std::filesystem::path& path)
     std::getline(in, value);
     return value;
 }
+#endif
 
 int servo2040_descriptor_score(const std::string& descriptor)
 {
@@ -164,16 +173,17 @@ bool Servo2040Client::open(const std::string& port)
     if (win_port.rfind("\\\\.\\", 0) != 0) {
         win_port = "\\\\.\\" + win_port;
     }
-    handle_ = CreateFileA(win_port.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                          OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (handle_ == INVALID_HANDLE_VALUE) {
+    HANDLE handle = CreateFileA(win_port.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
         status_ = "open failed";
         return false;
     }
+    handle_ = handle;
 
     DCB dcb = {};
     dcb.DCBlength = sizeof(dcb);
-    if (!GetCommState(handle_, &dcb)) {
+    if (!GetCommState(static_cast<HANDLE>(handle_), &dcb)) {
         status_ = "serial config read failed";
         close_handle_only();
         return false;
@@ -185,7 +195,7 @@ bool Servo2040Client::open(const std::string& port)
     dcb.fBinary = TRUE;
     dcb.fDtrControl = DTR_CONTROL_ENABLE;
     dcb.fRtsControl = RTS_CONTROL_ENABLE;
-    if (!SetCommState(handle_, &dcb)) {
+    if (!SetCommState(static_cast<HANDLE>(handle_), &dcb)) {
         status_ = "serial config failed";
         close_handle_only();
         return false;
@@ -197,7 +207,7 @@ bool Servo2040Client::open(const std::string& port)
     timeouts.ReadTotalTimeoutMultiplier = 1;
     timeouts.WriteTotalTimeoutConstant = 25;
     timeouts.WriteTotalTimeoutMultiplier = 1;
-    SetCommTimeouts(handle_, &timeouts);
+    SetCommTimeouts(static_cast<HANDLE>(handle_), &timeouts);
 #else
     fd_ = ::open(port.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd_ < 0) {
@@ -361,13 +371,14 @@ bool Servo2040Client::send_get(uint8_t pin_index, uint8_t count, int* values)
 bool Servo2040Client::write_all(const uint8_t* data, size_t len)
 {
 #ifdef _WIN32
-    if (handle_ == INVALID_HANDLE_VALUE) return false;
+    if (!handle_) return false;
 
     size_t sent = 0;
     int retries = 0;
     while (sent < len) {
         DWORD written = 0;
-        BOOL ok = WriteFile(handle_, data + sent, static_cast<DWORD>(len - sent), &written, nullptr);
+        BOOL ok = WriteFile(static_cast<HANDLE>(handle_), data + sent,
+                            static_cast<DWORD>(len - sent), &written, nullptr);
         if (ok && written > 0) {
             sent += static_cast<size_t>(written);
             retries = 0;
@@ -410,13 +421,14 @@ bool Servo2040Client::write_all(const uint8_t* data, size_t len)
 bool Servo2040Client::read_exact(uint8_t* data, size_t len)
 {
 #ifdef _WIN32
-    if (handle_ == INVALID_HANDLE_VALUE) return false;
+    if (!handle_) return false;
 
     size_t got = 0;
     int retries = 0;
     while (got < len) {
         DWORD read = 0;
-        BOOL ok = ReadFile(handle_, data + got, static_cast<DWORD>(len - got), &read, nullptr);
+        BOOL ok = ReadFile(static_cast<HANDLE>(handle_), data + got,
+                           static_cast<DWORD>(len - got), &read, nullptr);
         if (ok && read > 0) {
             got += static_cast<size_t>(read);
             retries = 0;
@@ -464,7 +476,7 @@ bool Servo2040Client::read_exact(uint8_t* data, size_t len)
 bool Servo2040Client::handle_is_open() const
 {
 #ifdef _WIN32
-    return handle_ != INVALID_HANDLE_VALUE;
+    return handle_ != nullptr;
 #else
     return fd_ >= 0;
 #endif
@@ -473,12 +485,12 @@ bool Servo2040Client::handle_is_open() const
 void Servo2040Client::set_blocking_writes()
 {
 #ifdef _WIN32
-    if (handle_ == INVALID_HANDLE_VALUE) return;
+    if (!handle_) return;
 
     COMMTIMEOUTS timeouts = {};
     timeouts.WriteTotalTimeoutConstant = 250;
     timeouts.WriteTotalTimeoutMultiplier = 10;
-    SetCommTimeouts(handle_, &timeouts);
+    SetCommTimeouts(static_cast<HANDLE>(handle_), &timeouts);
 #else
     if (fd_ < 0) return;
 
@@ -492,8 +504,8 @@ void Servo2040Client::set_blocking_writes()
 void Servo2040Client::flush_input()
 {
 #ifdef _WIN32
-    if (handle_ != INVALID_HANDLE_VALUE) {
-        PurgeComm(handle_, PURGE_RXCLEAR);
+    if (handle_) {
+        PurgeComm(static_cast<HANDLE>(handle_), PURGE_RXCLEAR);
     }
 #else
     if (fd_ >= 0) {
@@ -505,8 +517,8 @@ void Servo2040Client::flush_input()
 void Servo2040Client::drain_output()
 {
 #ifdef _WIN32
-    if (handle_ != INVALID_HANDLE_VALUE) {
-        FlushFileBuffers(handle_);
+    if (handle_) {
+        FlushFileBuffers(static_cast<HANDLE>(handle_));
     }
 #else
     if (fd_ >= 0) {
@@ -527,9 +539,9 @@ void Servo2040Client::sleep_ms(int ms)
 void Servo2040Client::close_handle_only()
 {
 #ifdef _WIN32
-    if (handle_ != INVALID_HANDLE_VALUE) {
-        CloseHandle(handle_);
-        handle_ = INVALID_HANDLE_VALUE;
+    if (handle_) {
+        CloseHandle(static_cast<HANDLE>(handle_));
+        handle_ = nullptr;
     }
 #else
     if (fd_ >= 0) {

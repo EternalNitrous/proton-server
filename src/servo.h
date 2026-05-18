@@ -6,13 +6,6 @@
 #include <cstdint>
 #include <string>
 
-#ifdef _WIN32
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
-    #include <windows.h>
-#endif
-
 struct ServoAngles {
     double coxa;
     double femur;
@@ -61,7 +54,7 @@ private:
     bool connected_ = false;
     bool relay_enabled_ = false;
 #ifdef _WIN32
-    HANDLE handle_ = INVALID_HANDLE_VALUE;
+    void* handle_ = nullptr;
 #else
     int fd_ = -1;
 #endif

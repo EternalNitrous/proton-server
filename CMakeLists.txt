@@ -27,6 +27,7 @@ target_compile_definitions(proton-server PRIVATE PROTON_SERVER_HEADLESS=1)
 # ============================================================
 
 if(WIN32)
+    target_compile_definitions(proton-server PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(proton-server PRIVATE ws2_32 iphlpapi)
 endif()
 

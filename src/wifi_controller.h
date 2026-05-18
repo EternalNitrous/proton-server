@@ -9,13 +9,6 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-    #ifndef NOMINMAX
-        #define NOMINMAX
-    #endif
-    #include <winsock2.h>
-#endif
-
 #include "kinematics.h"
 #include "mdns_responder.h"
 #include "servo.h"
